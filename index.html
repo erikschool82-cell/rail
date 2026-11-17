@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RAIL</title>
+<meta name="description" content="A personal wardrobe archive.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="RAIL">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0b0b" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500&display=swap">
+<style>
+/* Layout: archive panels edge to edge, 1px hairlines, square corners, photos on a neutral well. Mobile first. */
+:root {
+  --paper: #ffffff;
+  --ink: #000000;
+  --mute: #737373;
+  --line: #dcdcdc;
+  --well: #efefef;
+  --alert: #c8102e;
+  --font: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --bar: 56px;
+  --top: 52px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #0b0b0b; --ink: #f2f2f2; --mute: #8f8f8f; --line: #2a2a2a; --well: #171717; --alert: #ff5a6e; color-scheme: dark } }
+:root[data-theme="dark"] { --paper: #0b0b0b; --ink: #f2f2f2; --mute: #8f8f8f; --line: #2a2a2a; --well: #171717; --alert: #ff5a6e; color-scheme: dark }
+
+* { box-sizing: border-box; }
+html, body { background: var(--paper); color: var(--ink); }
+body { margin: 0; font: 400 13px/18px var(--font); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 50; background: var(--paper); }
+button, input, select, textarea { font: inherit; color: inherit; background: none; border: 0; border-radius: 0; margin: 0; }
+button { cursor: pointer; padding: 0; }
+:focus-visible { outline: 1px solid var(--ink); outline-offset: -1px; }
+::selection { background: var(--ink); color: var(--paper); }
+.label { font-size: 11px; line-height: 14px; letter-spacing: .07em; text-transform: uppercase; font-weight: 500; }
+.mute { color: var(--mute); }
+.gut { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* Top bar */
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--paper); border-bottom: 1px solid var(--line); }
+.top-row { display: flex; align-items: stretch; height: var(--top); }
+.top-row > * { display: flex; align-items: center; }
+.word { font-weight: 500; font-size: 15px; letter-spacing: .2em; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: 14px; border-right: 1px solid var(--line); }
+.count { padding: 0 12px; gap: 6px; }
+.tbtn { padding: 0 14px; border-left: 1px solid var(--line); }
+.tbtn[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.grow { flex: 1; min-width: 0; }
+.search { border-top: 1px solid var(--line); display: flex; height: 44px; }
+.search input { flex: 1; min-width: 0; padding: 0 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); font-size: 16px; }
+.search input::placeholder { color: var(--mute); }
+.title { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: 12px; }
+.back { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: 16px; border-right: 1px solid var(--line); color: var(--mute); }
+
+/* Bottom bar */
+.nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--paper); border-top: 1px solid var(--line);
+  display: grid; grid-template-columns: repeat(5, 1fr); height: calc(var(--bar) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+.nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; color: var(--mute); text-decoration: none;
+  font-size: 10px; font-weight: 500; letter-spacing: .07em; text-transform: uppercase; }
+.nav a::before { content: ""; width: 4px; height: 4px; background: transparent; }
+.nav a[aria-current="page"] { color: var(--ink); }
+.nav a[aria-current="page"]::before { background: var(--ink); }
+.fab { position: fixed; z-index: 31; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(var(--bar) + env(safe-area-inset-bottom, 0px) + 16px);
+  height: 44px; padding: 0 18px; background: var(--ink); color: var(--paper); display: flex; align-items: center; text-decoration: none; }
+main { padding-bottom: calc(var(--bar) + env(safe-area-inset-bottom, 0px) + 76px); min-height: 100vh; }
+
+/* Grids */
+.masonry { display: flex; gap: 8px; padding: 8px max(8px, env(safe-area-inset-right, 0px)) 8px max(8px, env(safe-area-inset-left, 0px)); }
+.col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.archive { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.archive .card { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.archive .card:nth-child(3n) { border-right: 0; }
+.card { display: block; color: inherit; text-decoration: none; min-width: 0; }
+.card:active .well img { opacity: .8; }
+.well { position: relative; width: 100%; max-width: 100%; background: var(--well); overflow: hidden; }
+.well img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity .16s ease-out; }
+.well img.on { opacity: 1; }
+.well .none { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.cap { padding: 7px 4px 10px; min-width: 0; }
+.archive .cap { padding: 6px 8px 9px; }
+.cap .b, .cap .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cap .b { font-size: 10px; line-height: 13px; letter-spacing: .07em; text-transform: uppercase; font-weight: 500; }
+.cap .b + .n { color: var(--mute); }
+.fav-dot { position: absolute; top: 8px; right: 8px; width: 6px; height: 6px; background: var(--ink); }
+
+/* Panels and empty states */
+.empty { padding: 48px 16px; display: flex; justify-content: center; }
+.box { border: 1px solid var(--line); width: 100%; max-width: 380px; }
+.box > * { padding: 14px 16px; }
+.box > * + * { border-top: 1px solid var(--line); }
+.box p { margin: 0; color: var(--mute); }
+.btn { display: inline-flex; align-items: center; justify-content: center; height: 44px; padding: 0 16px; border: 1px solid var(--ink);
+  font-size: 11px; letter-spacing: .07em; text-transform: uppercase; font-weight: 500; color: var(--ink); text-decoration: none; }
+.btn.solid { background: var(--ink); color: var(--paper); }
+.btn.full { width: 100%; }
+.btn:disabled { opacity: .35; pointer-events: none; }
+.btn.danger { border-color: var(--alert); background: var(--alert); color: #fff; }
+
+/* Sheet (filters) */
+.scrim { position: fixed; inset: 0; z-index: 40; background: color-mix(in srgb, var(--ink) 35%, transparent); }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; background: var(--paper); border-top: 1px solid var(--ink);
+  max-height: 82vh; display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.sheet-head { display: flex; align-items: center; height: 48px; border-bottom: 1px solid var(--line); }
+.sheet-body { overflow-y: auto; }
+.group { padding: 14px 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); border-bottom: 1px solid var(--line); }
+.group > .label { margin-bottom: 10px; display: block; color: var(--mute); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { height: 32px; padding: 0 11px; border: 1px solid var(--line); font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.chip .sw { width: 10px; height: 10px; border: 1px solid var(--line); }
+.chip .n { color: var(--mute); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="true"] .n { color: inherit; opacity: .7; }
+.cap1::first-letter { text-transform: uppercase; }
+
+/* Forms */
+.row { padding: 12px 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); border-bottom: 1px solid var(--line); }
+.row > .label { display: block; color: var(--mute); margin-bottom: 8px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); }
+.two .row { border-bottom: 0; }
+.two .row + .row { border-left: 1px solid var(--line); padding-left: 16px; }
+.field { width: 100%; font-size: 16px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.field:focus { outline: none; border-bottom-color: var(--ink); }
+textarea.field { min-height: 72px; resize: vertical; }
+.colour { display: flex; align-items: center; gap: 12px; }
+.colour input[type=color] { width: 48px; height: 32px; padding: 0; border: 1px solid var(--line); }
+.actions { position: sticky; bottom: calc(var(--bar) + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: 1fr 1fr; background: var(--line); gap: 1px; border-top: 1px solid var(--line); z-index: 5; }
+.actions button { height: 52px; background: var(--paper); }
+.actions button.solid { background: var(--ink); color: var(--paper); }
+.actions button:disabled { opacity: .4; }
+.err { color: var(--alert); padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.more { padding: 14px 16px; display: block; text-decoration: underline; text-underline-offset: 4px; }
+
+/* Photo picker */
+.shots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+.shot { position: relative; background: var(--well); aspect-ratio: 4 / 5; max-width: 100%; }
+.shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.shot .tag { position: absolute; left: 6px; top: 6px; background: var(--paper); padding: 2px 5px; }
+.shot .x { position: absolute; right: 0; top: 0; width: 32px; height: 32px; background: var(--paper); font-size: 16px; }
+.shot.add { display: flex; align-items: center; justify-content: center; background: var(--paper); color: var(--mute); }
+.pick { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; aspect-ratio: 4 / 3; max-width: 100%; width: 100%; background: var(--well); border-bottom: 1px solid var(--line); }
+
+/* Detail */
+.carousel { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; background: var(--well); }
+.carousel::-webkit-scrollbar { display: none; }
+.slide { flex: 0 0 100%; scroll-snap-align: start; }
+.dots { display: flex; gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+.dots span { flex: 1; height: 3px; background: var(--paper); }
+.dots span.on { background: var(--ink); }
+.photobar { display: flex; height: 44px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.photobar > * { display: flex; align-items: center; padding: 0 14px; white-space: nowrap; border-right: 1px solid var(--line); }
+.photobar > *:last-child { border-right: 0; }
+.head { padding: 18px 16px; border-bottom: 1px solid var(--line); }
+.head h1 { margin: 2px 0 0; font-size: 22px; line-height: 27px; font-weight: 400; text-wrap: balance; }
+.meta { margin-top: 8px; display: flex; gap: 12px; }
+.quad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+.quad button { height: 46px; background: var(--paper); }
+.quad button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.quad .del { color: var(--alert); }
+.confirm { background: var(--well); padding: 16px; border-bottom: 1px solid var(--line); display: grid; gap: 12px; }
+.confirm .btns { display: flex; gap: 8px; }
+dl { margin: 0; }
+.fact { display: grid; grid-template-columns: 104px 1fr; padding: 10px 16px; border-bottom: 1px solid var(--line); gap: 8px; }
+.fact dt { color: var(--mute); padding-top: 1px; }
+.fact dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.swatch { display: inline-block; width: 11px; height: 11px; border: 1px solid var(--line); vertical-align: -1px; margin-right: 6px; }
+.missing { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: left; }
+.notes { padding: 14px 16px; border-bottom: 1px solid var(--line); white-space: pre-wrap; }
+
+/* Profile */
+.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+.stats div { background: var(--paper); padding: 18px 16px; }
+.stats .v { font-size: 24px; line-height: 28px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.bars li { display: grid; grid-template-columns: 112px 1fr 28px; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.bars { list-style: none; margin: 0; padding: 0; }
+.bars .t { height: 3px; background: var(--line); }
+.bars .t i { display: block; height: 100%; background: var(--ink); }
+.bars .c { text-align: right; font-variant-numeric: tabular-nums; color: var(--mute); }
+.status-note { padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.update { position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--top)); z-index: 19; display: flex; align-items: center; gap: 12px;
+  background: var(--ink); color: var(--paper); min-height: 44px; padding-block: 6px; }
+.update span { flex: 1; min-width: 0; }
+.update button { height: 32px; padding: 0 12px; border: 1px solid var(--paper); }
+.version { display: flex; align-items: center; gap: 12px; padding-block: 14px; border-bottom: 1px solid var(--line); border-top: 1px solid var(--line); margin-top: 24px; }
+.version span { flex: 1; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--bar) + env(safe-area-inset-bottom, 0px) + 72px); z-index: 60;
+  background: var(--ink); color: var(--paper); padding: 10px 14px; max-width: calc(100% - 32px); }
+
+/* Wider screens: rail on the left, more columns */
+@media (min-width: 900px) {
+  .nav { top: 0; bottom: 0; right: auto; width: 176px; height: auto; grid-template-columns: 1fr; grid-auto-rows: 40px; align-content: start;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 60px); border-top: 0; border-right: 1px solid var(--line); }
+  .nav a { flex-direction: row; justify-content: flex-start; padding-left: 18px; font-size: 11px; gap: 8px; }
+  .nav a::before { width: 5px; height: 5px; }
+  body { padding-left: 176px; }
+  .fab { right: auto; left: 16px; bottom: 16px; width: 144px; justify-content: center; }
+  main { padding-bottom: 40px; }
+  .archive { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .archive .card:nth-child(3n) { border-right: 1px solid var(--line); }
+  .masonry, .col { gap: 16px; }
+  .masonry { padding: 16px; }
+  .detail { display: grid; grid-template-columns: minmax(0, 7fr) minmax(340px, 4fr); }
+  .detail > section:first-child { border-right: 1px solid var(--line); }
+  .actions { bottom: 0; }
+  .sheet { left: auto; width: 420px; top: 0; max-height: none; border-top: 0; border-left: 1px solid var(--ink); }
+  .toast { bottom: 32px; }
+  .form-wrap { max-width: 640px; border-right: 1px solid var(--line); }
+}
+@media (prefers-reduced-motion: reduce) { .well img { transition: none; } }
+html { padding-top: env(safe-area-inset-top, 0px); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+.install { padding-block: 12px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: center; }
+.install span { flex: 1; min-width: 0; }
+.tools { display: grid; gap: 8px; padding-block: 16px; }
+</style>
+</head>
+<body>
+<header class="top" id="top"></header>
+<div class="update gut" id="update" role="status" hidden><span id="update-text"></span><button class="label" id="update-btn">Update</button></div>
+<main id="main" aria-live="polite"></main>
+<nav class="nav" id="nav" aria-label="Sections">
+  <a href="#wardrobe" data-v="wardrobe">Wardrobe</a>
+  <a href="#lists" data-v="lists">Lists</a>
+  <a href="#boards" data-v="boards">Boards</a>
+  <a href="#outfits" data-v="outfits">Outfits</a>
+  <a href="#profile" data-v="profile">Profile</a>
+</nav>
+<a class="fab label" id="fab" href="#add">+ Add piece</a>
+<div id="layer"></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+// ---------- Vocabulary (the outfit engine will read these words) ----------
+const CATEGORIES = [
+  ["outerwear", "Outerwear"], ["tops", "Tops"], ["shirts", "Shirts"], ["knitwear", "Knitwear"],
+  ["trousers", "Trousers"], ["bottoms", "Shorts and skirts"], ["one-piece", "One-piece"],
+  ["shoes", "Shoes"], ["accessories", "Accessories"],
+];
+const catLabel = (id) => (CATEGORIES.find((c) => c[0] === id) || [id, id])[1];
+const FITS = ["oversized", "relaxed", "regular", "slim", "skinny"];
+const SILHOUETTES = ["wide", "straight", "tapered", "skinny", "tailored", "boxy", "cropped", "longline"];
+const STYLES = ["minimalist", "avant-garde", "classic", "streetwear", "contemporary", "workwear", "casual", "tailored"];
+const SEASONS = ["spring", "summer", "autumn", "winter"];
+const LAYERS = ["base", "mid", "outer", "statement"];
+const PATTERNS = ["solid", "stripe", "check", "print", "graphic", "texture"];
+const FORMALITY = ["", "Very casual", "Casual", "Smart casual", "Smart", "Formal"];
+const STATUSES = [["owned", "Owned"], ["wishlist", "Wishlist"], ["archived", "Archived"]];
+const KINDS = ["front", "back", "detail", "label", "worn"];
+const FAMILY_HEX = { black: "#111", charcoal: "#3a3a3a", grey: "#9a9a9a", white: "#fff", cream: "#efe7d6", beige: "#cdb999",
+  brown: "#6b4a32", navy: "#1d2a44", blue: "#3a5fa0", green: "#3d6b4a", olive: "#6b6b3a", red: "#b3242a",
+  burgundy: "#5e1a24", pink: "#e3a6b4", purple: "#6a4a8a", yellow: "#e3c440", orange: "#d97a2a" };
+
+// ---------- Colour: OKLCH so distances match what the eye sees ----------
+function oklch(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const lin = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => { const s = v / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; });
+  const [r, g, b] = lin;
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const L = 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s;
+  const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
+  const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+  let H = Math.atan2(B, A) * 180 / Math.PI; if (H < 0) H += 360;
+  return { l: L, c: Math.hypot(A, B), h: H };
+}
+function family(hex) {
+  if (!/^#[0-9a-f]{6}$/i.test(hex || "")) return null;
+  const { l, c, h } = oklch(hex);
+  if (c < 0.03) return l < 0.3 ? "black" : l < 0.5 ? "charcoal" : l < 0.85 ? "grey" : "white";
+  if (h >= 50 && h < 100 && c < 0.09) return l > 0.86 ? "cream" : l > 0.66 ? "beige" : "brown";
+  if (h >= 230 && h < 290 && l < 0.4) return "navy";
+  if (h < 20 || h >= 345) return l < 0.45 ? "burgundy" : l > 0.75 ? "pink" : "red";
+  if (h < 50) return l < 0.5 ? "brown" : l > 0.78 ? "pink" : "orange";
+  if (h < 100) return l < 0.55 ? "brown" : "orange";
+  if (h < 115) return l < 0.6 ? "olive" : "yellow";
+  if (h < 160) return c < 0.1 || l < 0.55 ? "olive" : "green";
+  if (h < 200) return "green";
+  if (h < 290) return "blue";
+  if (h < 345) return l > 0.75 ? "pink" : "purple";
+  return "red";
+}
+
+// ---------- Version ----------
+// Raised together with VERSION in sw.js on every release.
+const APP_VERSION = "1.0.0";
+const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+function applyUpdate() {
+  toast("Updating");
+  S.updating = true;
+  const w = S.reg && S.reg.waiting;
+  if (w) w.postMessage("skip"); else location.reload();
+}
+function renderUpdate() {
+  const el = $("#update");
+  el.hidden = !S.updateReady;
+  if (S.updateReady) $("#update-text").textContent = "A new version of RAIL is ready.";
+}
+
+// ---------- Helpers ----------
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const newId = () => "g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const URLS = new Map();
+const blobUrl = (id) => URLS.get(id) || "";
+const pref = {
+  get(k, d) { try { const v = localStorage.getItem("rail." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("rail." + k, JSON.stringify(v)); } catch {} },
+};
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2400);
+}
+
+// Resize a photo in the browser before upload: a 1600px image for the detail
+// view and a 600px one for the grid, plus the garment colour from the centre.
+async function processPhoto(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: "from-image" }).catch(() => null);
+  let src = bmp;
+  if (!src) {
+    src = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("unreadable")); i.src = URL.createObjectURL(file); });
+  }
+  const w = src.width, h = src.height;
+  const draw = (max) => {
+    const s = Math.min(1, max / Math.max(w, h));
+    const c = document.createElement("canvas"); c.width = Math.round(w * s); c.height = Math.round(h * s);
+    c.getContext("2d").drawImage(src, 0, 0, c.width, c.height); return c;
+  };
+  const toBlob = (c, q) => new Promise((res) => c.toBlob((b) => res(b), "image/webp", q));
+  const big = draw(1600), small = draw(600);
+  let full = await toBlob(big, 0.86), thumb = await toBlob(small, 0.8);
+  if (!full || full.type !== "image/webp") { // Safari without WebP encode
+    full = await new Promise((r) => big.toBlob(r, "image/jpeg", 0.88));
+    thumb = await new Promise((r) => small.toBlob(r, "image/jpeg", 0.82));
+  }
+  // Median colour of the centre: the garment, not the backdrop.
+  const c = document.createElement("canvas"); c.width = 60; c.height = 60;
+  const x = c.getContext("2d"); x.drawImage(src, 0, 0, 60, 60);
+  const d = x.getImageData(18, 15, 24, 30).data, R = [], G = [], B = [];
+  for (let i = 0; i < d.length; i += 4) { R.push(d[i]); G.push(d[i + 1]); B.push(d[i + 2]); }
+  const med = (a) => a.sort((p, q) => p - q)[a.length >> 1];
+  const color = "#" + [med(R), med(G), med(B)].map((v) => v.toString(16).padStart(2, "0")).join("");
+  return { full, thumb, w, h, color };
+}
+
+// ---------- State ----------
+const S = {
+  db: null, assets: null, user: null, canWrite: true,
+  items: [], loaded: false, stale: false, failed: "",
+  q: "", status: "owned", favOnly: false, sel: { category: [], brand: [], color: [], season: [], size: [], tag: [] },
+  sort: pref.get("sort", "recent"), mode: pref.get("mode", "visual"), showBrand: pref.get("showBrand", true), showSize: pref.get("showSize", false),
+  searchOpen: false, filterOpen: false,
+  draft: null, files: [], busy: false, err: "", more: false,
+  edit: null, confirmDel: false, slide: 0, latest: null,
+};
+const live = () => S.items.filter((g) => !g.deleted);
+const byId = (id) => live().find((g) => g.id === id);
+
+// ---------- Routing (plain #name only) ----------
+function route() {
+  const h = location.hash.slice(1) || "wardrobe";
+  if (h.startsWith("item-")) return { v: "item", id: h.slice(5) };
+  return { v: ["wardrobe", "add", "lists", "boards", "outfits", "profile"].includes(h) ? h : "wardrobe" };
+}
+window.addEventListener("hashchange", () => { S.edit = null; S.confirmDel = false; S.slide = 0; S.err = ""; if (route().v === "add" && !S.draft) newDraft(); render(); window.scrollTo(0, 0); });
+function newDraft(keep) { S.draft = { status: "owned", ...(keep || {}) }; S.files.forEach((f) => URL.revokeObjectURL(f.url)); S.files = []; S.more = false; S.err = ""; }
+
+// ---------- Render ----------
+function render() {
+  const r = route();
+  document.querySelectorAll("#nav a").forEach((a) => {
+    const on = a.dataset.v === r.v || (a.dataset.v === "wardrobe" && (r.v === "item" || r.v === "add"));
+    a.toggleAttribute("aria-current", false); if (on) a.setAttribute("aria-current", "page");
+  });
+  $("#fab").hidden = !(r.v === "wardrobe") || !S.canWrite || !S.db;
+  const v = { wardrobe: viewWardrobe, add: viewAdd, item: viewItem, profile: viewProfile, lists: viewSoon, boards: viewSoon, outfits: viewSoon }[r.v];
+  v(r);
+  renderLayer();
+}
+
+function needStore() {
+  if (S.db) return false;
+  $("#top").innerHTML = `<div class="top-row"><span class="word">RAIL</span></div>`;
+  $("#main").innerHTML = S.failed === "nodb"
+    ? emptyBox("Storage is blocked", "This browser is not letting RAIL save on this device. Turn off private browsing, or open RAIL in Safari or Chrome.")
+    : emptyBox("Opening your wardrobe", "Loading your pieces.");
+  return true;
+}
+function emptyBox(title, body, action = "") {
+  return `<div class="empty"><div class="box"><div class="label">${esc(title)}</div><p>${esc(body)}</p>${action ? `<div>${action}</div>` : ""}</div></div>`;
+}
+
+// Wardrobe -------------------------------------------------------------
+function filtered() {
+  const pool = live().filter((g) => (g.status || "owned") === S.status);
+  const words = S.q.toLowerCase().split(/\s+/).filter(Boolean);
+  const has = (k, v) => { const s = S.sel[k]; if (!s.length) return true; return Array.isArray(v) ? v.some((x) => s.includes(x)) : v != null && s.includes(v); };
+  let list = pool.filter((g) => {
+    if (S.favOnly && !g.fav) return false;
+    if (!has("category", g.category) || !has("brand", g.brand || null) || !has("color", g.colorFamily || null)) return false;
+    if (!has("season", g.seasons || []) || !has("size", g.size || null) || !has("tag", g.tags || [])) return false;
+    if (!words.length) return true;
+    const hay = [g.name, g.brand, catLabel(g.category), g.colorFamily, g.material, g.collection, g.notes, ...(g.tags || []), ...(g.styles || [])].filter(Boolean).join(" ").toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+  const by = (f) => (a, b) => f(a).localeCompare(f(b));
+  const catIx = (g) => CATEGORIES.findIndex((c) => c[0] === g.category);
+  list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  if (S.sort === "oldest") list.reverse();
+  if (S.sort === "name") list.sort(by((g) => (g.name || "").toLowerCase()));
+  if (S.sort === "brand") list.sort(by((g) => (g.brand || "~").toLowerCase()));
+  if (S.sort === "category") list.sort((a, b) => catIx(a) - catIx(b));
+  return { pool, list };
+}
+const activeFilters = () => Object.values(S.sel).reduce((n, v) => n + v.length, 0) + (S.favOnly ? 1 : 0);
+
+function viewWardrobe() {
+  if (needStore()) return;
+  const { pool, list } = filtered();
+  const af = activeFilters();
+  $("#top").innerHTML = `
+    <div class="top-row">
+      <span class="word">RAIL</span>
+      <span class="count grow"><span class="label">Wardrobe</span><span class="mute" style="font-variant-numeric:tabular-nums">${list.length}${list.length !== pool.length ? " / " + pool.length : ""}</span></span>
+      <button class="tbtn label" id="b-search" aria-pressed="${S.searchOpen || !!S.q}">Search</button>
+      <button class="tbtn label" id="b-filter" aria-pressed="${S.filterOpen}">Filter${af ? " " + af : ""}</button>
+    </div>
+    ${S.searchOpen || S.q ? `<div class="search"><input id="q" type="search" placeholder="Name, brand, material, tag" value="${esc(S.q)}" aria-label="Search wardrobe" autocomplete="off"></div>` : ""}`;
+  $("#b-search").onclick = () => { S.searchOpen = !(S.searchOpen || S.q); if (!S.searchOpen) S.q = ""; render(); if (S.searchOpen) $("#q")?.focus(); };
+  $("#b-filter").onclick = () => { S.filterOpen = true; render(); };
+  const q = $("#q");
+  if (q) q.oninput = () => { S.q = q.value; renderGrid(); updateCount(); };
+
+  $("#main").innerHTML = `${S.stale ? `<div class="status-note mute">Still connecting. What you see may be out of date.</div>` : ""}<div id="grid"></div>`;
+  renderGrid();
+}
+function updateCount() {
+  const { pool, list } = filtered();
+  const c = $(".count .mute"); if (c) c.textContent = list.length + (list.length !== pool.length ? " / " + pool.length : "");
+}
+function caption(g) {
+  const b = S.showBrand && g.brand ? `<div class="b">${esc(g.brand)}</div>` : "";
+  const sz = S.showSize && g.size ? `<span class="mute" style="float:right;font-size:11px">${esc(g.size)}</span>` : "";
+  return `<div class="cap">${sz}${b}<div class="n">${esc(g.name)}</div></div>`;
+}
+function photo(img, ratio, useFull) {
+  const r = ratio || (img ? img.w / img.h : 0.8);
+  if (!img) return `<div class="well" style="aspect-ratio:${r}"><div class="none label mute">No photo</div></div>`;
+  return `<div class="well" style="aspect-ratio:${r}"><img alt="" loading="lazy" decoding="async" src="${blobUrl(useFull ? img.id : img.thumb || img.id)}"></div>`;
+}
+function renderGrid() {
+  const el = $("#grid"); if (!el) return;
+  const { pool, list } = filtered();
+  if (!live().length) {
+    el.innerHTML = S.loaded
+      ? emptyBox("Your wardrobe is empty", "Start with one piece. A photo and a category are enough; the details can wait.", S.canWrite ? `<a class="btn solid full" href="#add">Add your first piece</a>` : "")
+      : emptyBox("Loading your wardrobe", "Fetching your pieces.");
+    return;
+  }
+  if (!list.length) {
+    const any = activeFilters() || S.q;
+    el.innerHTML = emptyBox("Nothing matches", pool.length ? "No pieces fit this search and these filters." : `No pieces are marked ${S.status} yet.`, any ? `<button class="btn full" id="clear2">Clear filters</button>` : "");
+    $("#clear2")?.addEventListener("click", clearFilters);
+    return;
+  }
+  const card = (g) => `<a class="card" href="#item-${esc(g.id)}"><div style="position:relative">${photo(g.images?.[0], S.mode === "archive" ? 0.8 : null)}${g.fav ? `<span class="fav-dot" aria-label="Favourite"></span>` : ""}</div>${caption(g)}</a>`;
+  if (S.mode === "archive") { el.innerHTML = `<div class="archive">${list.map(card).join("")}</div>`; return; }
+  const w = el.clientWidth || window.innerWidth;
+  const cols = w < 600 ? 2 : w < 1000 ? 3 : w < 1400 ? 4 : 5;
+  const colsArr = Array.from({ length: cols }, () => []), hgt = new Array(cols).fill(0);
+  for (const g of list) {
+    const im = g.images?.[0]; const r = im ? Math.min(Math.max(im.h / im.w, 0.6), 1.8) : 1.25;
+    const i = hgt.indexOf(Math.min(...hgt)); colsArr[i].push(g); hgt[i] += r + 0.2;
+  }
+  el.innerHTML = `<div class="masonry">${colsArr.map((c) => `<div class="col">${c.map(card).join("")}</div>`).join("")}</div>`;
+}
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => route().v === "wardrobe" && renderGrid(), 150); });
+
+function clearFilters() { S.sel = { category: [], brand: [], color: [], season: [], size: [], tag: [] }; S.favOnly = false; S.q = ""; render(); }
+
+function renderLayer() {
+  const L = $("#layer");
+  if (!S.filterOpen || route().v !== "wardrobe") { L.innerHTML = ""; return; }
+  const pool = live().filter((g) => (g.status || "owned") === S.status);
+  const count = (vals) => { const m = new Map(); vals.forEach((v) => v && m.set(v, (m.get(v) || 0) + 1)); return [...m].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(b[0])); };
+  const facets = [
+    ["category", "Category", count(pool.map((g) => g.category)).sort((a, b) => CATEGORIES.findIndex((c) => c[0] === a[0]) - CATEGORIES.findIndex((c) => c[0] === b[0])), catLabel],
+    ["color", "Colour", count(pool.map((g) => g.colorFamily))],
+    ["brand", "Brand", count(pool.map((g) => g.brand))],
+    ["season", "Season", count(pool.flatMap((g) => g.seasons || [])).sort((a, b) => SEASONS.indexOf(a[0]) - SEASONS.indexOf(b[0]))],
+    ["size", "Size", count(pool.map((g) => g.size))],
+    ["tag", "Tags", count(pool.flatMap((g) => g.tags || []))],
+  ];
+  const chip = (on, attrs, body) => `<button class="chip" aria-pressed="${on}" ${attrs}>${body}</button>`;
+  L.innerHTML = `<div class="scrim" id="scrim"></div>
+  <div class="sheet" role="dialog" aria-label="Filter and view">
+    <div class="sheet-head"><span class="label grow gut">Filter and view</span>${activeFilters() ? `<button class="tbtn label" id="clr">Clear</button>` : ""}<button class="tbtn label" id="done" style="background:var(--ink);color:var(--paper);height:100%">Done</button></div>
+    <div class="sheet-body">
+      <div class="group"><span class="label">View</span><div class="chips">
+        ${chip(S.mode === "visual", `data-mode="visual"`, "Visual")}${chip(S.mode === "archive", `data-mode="archive"`, "Archive")}</div></div>
+      <div class="group"><span class="label">Show</span><div class="chips">
+        ${STATUSES.map(([id, l]) => chip(S.status === id, `data-status="${id}"`, l)).join("")}${chip(S.favOnly, `id="favonly"`, "Favourites only")}</div></div>
+      ${facets.map(([k, t, items, lab]) => `<div class="group"><span class="label">${t}</span>${items.length ? `<div class="chips">${items.map(([v, n]) =>
+        chip(S.sel[k].includes(v), `data-k="${k}" data-v="${esc(v)}"`, `${k === "color" ? `<span class="sw" style="background:${FAMILY_HEX[v] || "#ccc"}"></span>` : ""}<span class="cap1">${esc(lab ? lab(v) : v)}</span><span class="n">${n}</span>`)).join("")}</div>` : `<span class="mute">None yet</span>`}</div>`).join("")}
+      <div class="group"><span class="label">Sort</span><div class="chips">
+        ${[["recent", "Recently added"], ["oldest", "Oldest"], ["name", "Name"], ["brand", "Brand"], ["category", "Category"]].map(([id, l]) => chip(S.sort === id, `data-sort="${id}"`, l)).join("")}</div></div>
+      <div class="group"><span class="label">On each piece</span><div class="chips">
+        ${chip(S.showBrand, `id="sb"`, "Brand")}${chip(S.showSize, `id="ss"`, "Size")}</div></div>
+    </div>
+  </div>`;
+  const close = () => { S.filterOpen = false; render(); };
+  $("#scrim").onclick = close; $("#done").onclick = close;
+  $("#clr")?.addEventListener("click", clearFilters);
+  L.querySelectorAll("[data-mode]").forEach((b) => b.onclick = () => { S.mode = b.dataset.mode; pref.set("mode", S.mode); render(); });
+  L.querySelectorAll("[data-status]").forEach((b) => b.onclick = () => { S.status = b.dataset.status; render(); });
+  L.querySelectorAll("[data-sort]").forEach((b) => b.onclick = () => { S.sort = b.dataset.sort; pref.set("sort", S.sort); render(); });
+  L.querySelectorAll("[data-k]").forEach((b) => b.onclick = () => {
+    const k = b.dataset.k, v = b.dataset.v, s = S.sel[k];
+    S.sel[k] = s.includes(v) ? s.filter((x) => x !== v) : [...s, v]; render();
+  });
+  $("#favonly").onclick = () => { S.favOnly = !S.favOnly; render(); };
+  $("#sb").onclick = () => { S.showBrand = !S.showBrand; pref.set("showBrand", S.showBrand); render(); };
+  $("#ss").onclick = () => { S.showSize = !S.showSize; pref.set("showSize", S.showSize); render(); };
+}
+
+// Garment fields (quick add and full edit share one set) ----------------
+function fieldsHTML(d, full) {
+  const s = (k) => d[k] ?? "";
+  const arr = (k) => Array.isArray(d[k]) ? d[k] : [];
+  const one = (k, list, labelFn, plain) => `<div class="chips">${list.map((v) => {
+    const val = Array.isArray(v) ? v[0] : v, lab = Array.isArray(v) ? v[1] : (labelFn ? labelFn(v) : v);
+    return `<button type="button" class="chip${plain ? "" : " cap1"}" data-one="${k}" data-v="${esc(val)}" aria-pressed="${String(s(k)) === String(val)}">${esc(lab)}</button>`;
+  }).join("")}</div>`;
+  const many = (k, list) => `<div class="chips">${list.map((v) => `<button type="button" class="chip cap1" data-many="${k}" data-v="${v}" aria-pressed="${arr(k).includes(v)}">${v}</button>`).join("")}</div>`;
+  const row = (label, body, req) => `<div class="row"><span class="label">${label}${req ? " *" : ""}</span>${body}</div>`;
+  const inp = (k, ph = "", extra = "") => `<input class="field" data-f="${k}" id="f-${k}" value="${esc(s(k))}" placeholder="${esc(ph)}" ${extra}>`;
+  let h = row("Category", one("category", CATEGORIES, null, true), true)
+    + row("Name", inp("name", "Wool overcoat", `autocomplete="off"`), true)
+    + `<div class="two">${row("Brand", inp("brand", "", `autocomplete="off"`))}${row("Size", inp("size"))}</div>`
+    + row("Colour", `<div class="colour"><input type="color" id="f-color" value="${esc(s("color") || "#000000")}" aria-label="Main colour"><span class="mute">${s("color") ? `<span class="cap1">${esc(family(s("color")) || "")}</span>` : "Taken from the photo if left empty"}</span></div>`)
+    + row("Status", one("status", STATUSES, null, true));
+  if (full) {
+    h += row("Season", many("seasons", SEASONS)) + row("Fit", one("fit", FITS)) + row("Silhouette", one("silhouette", SILHOUETTES))
+      + row("Style", many("styles", STYLES)) + row("Formality", one("formality", [1, 2, 3, 4, 5].map((n) => [String(n), FORMALITY[n]]), null, true))
+      + row("Layer", one("layer", LAYERS)) + row("Pattern", one("pattern", PATTERNS))
+      + `<div class="two">${row("Material", inp("material", "Virgin wool"))}${row("Collection", inp("collection", "FW19"))}</div>`
+      + `<div class="two">${row("Price", inp("price", "", `inputmode="decimal"`))}${row("Bought", `<input class="field" type="date" data-f="bought" id="f-bought" value="${esc(s("bought"))}">`)}</div>`
+      + row("Tags", `<input class="field" data-f="tagsText" id="f-tags" value="${esc(arr("tags").join(", "))}" placeholder="rotation, travel" autocomplete="off">`)
+      + row("Notes", `<textarea class="field" data-f="notes" id="f-notes">${esc(s("notes"))}</textarea>`);
+  }
+  return h;
+}
+function bindFields(root, d, onChange) {
+  root.querySelectorAll("[data-one]").forEach((b) => b.onclick = () => {
+    const k = b.dataset.one, v = b.dataset.v;
+    d[k] = String(d[k]) === v && !["category", "status"].includes(k) ? "" : v;
+    root.querySelectorAll(`[data-one="${k}"]`).forEach((x) => x.setAttribute("aria-pressed", String(d[k]) === x.dataset.v));
+    onChange();
+  });
+  root.querySelectorAll("[data-many]").forEach((b) => b.onclick = () => {
+    const k = b.dataset.many, v = b.dataset.v, a = Array.isArray(d[k]) ? d[k] : [];
+    d[k] = a.includes(v) ? a.filter((x) => x !== v) : [...a, v];
+    b.setAttribute("aria-pressed", d[k].includes(v));
+  });
+  root.querySelectorAll("[data-f]").forEach((i) => i.oninput = () => {
+    if (i.dataset.f === "tagsText") d.tags = i.value.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean);
+    else d[i.dataset.f] = i.value;
+    onChange();
+  });
+  const c = root.querySelector("#f-color");
+  if (c) c.oninput = () => { d.color = c.value; const sp = c.nextElementSibling; sp.innerHTML = `<span class="cap1">${esc(family(c.value) || "")}</span>`; };
+}
+function cleanRecord(d) {
+  const out = {};
+  for (const k of ["name", "brand", "category", "size", "color", "status", "fit", "silhouette", "layer", "pattern", "material", "collection", "bought", "notes"]) {
+    const v = typeof d[k] === "string" ? d[k].trim() : d[k]; out[k] = v === "" || v == null ? null : v;
+  }
+  out.formality = d.formality ? Number(d.formality) : null;
+  out.price = d.price && !isNaN(parseFloat(d.price)) ? parseFloat(d.price) : null;
+  for (const k of ["seasons", "styles", "tags"]) out[k] = Array.isArray(d[k]) ? d[k] : [];
+  out.colorFamily = family(out.color);
+  out.status = out.status || "owned";
+  return out;
+}
+
+// Add ---------------------------------------------------------------------
+function viewAdd() {
+  if (needStore()) return;
+  if (!S.draft) newDraft();
+  const d = S.draft;
+  $("#top").innerHTML = `<div class="top-row"><a class="back label" href="#wardrobe" style="text-decoration:none">Close</a><span class="label title grow">Add piece</span></div>`;
+  if (!S.canWrite) { $("#main").innerHTML = emptyBox("View only", "You can look through this wardrobe but not add to it."); return; }
+  const canPhoto = !!S.assets;
+  const shots = S.files.length
+    ? `<div class="shots">${S.files.map((f, i) => `<div class="shot"><img src="${f.url}" alt=""><span class="tag label">${i ? i + 1 : "Cover"}</span><button class="x" data-rm="${i}" aria-label="Remove photo">×</button></div>`).join("")}<button class="shot add label" id="more-ph">+ Photo</button></div>`
+    : `<button class="pick" id="pick" ${canPhoto ? "" : "disabled"}><span class="label">${canPhoto ? "Add photos" : "Photos need edit access"}</span><span class="mute">Camera or library. Plain wall, daylight, whole garment.</span></button>`;
+  const ok = (d.name || "").trim() && d.category;
+  $("#main").innerHTML = `<div class="form-wrap">
+    ${shots}
+    <input type="file" id="file" accept="image/*" multiple hidden>
+    <div id="fields">${fieldsHTML(d, S.more)}</div>
+    <button class="more label" id="more">${S.more ? "Fewer details" : "More details"}</button>
+    ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
+    <div class="actions"><button class="label" id="again" ${ok && !S.busy ? "" : "disabled"}>Save, add another</button><button class="label solid" id="save" ${ok && !S.busy ? "" : "disabled"}>${S.busy ? "Saving" : "Save"}</button></div>
+  </div>`;
+  const file = $("#file");
+  const open = () => file.click();
+  $("#pick")?.addEventListener("click", open); $("#more-ph")?.addEventListener("click", open);
+  file.onchange = () => { for (const f of file.files) S.files.push({ file: f, url: URL.createObjectURL(f) }); file.value = ""; viewAdd(); };
+  document.querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => { const f = S.files.splice(+b.dataset.rm, 1)[0]; URL.revokeObjectURL(f.url); viewAdd(); });
+  $("#more").onclick = () => { S.more = !S.more; viewAdd(); };
+  const sync = () => { const ok2 = (d.name || "").trim() && d.category; $("#save").disabled = $("#again").disabled = !ok2 || S.busy; };
+  bindFields($("#fields"), d, sync);
+  $("#save").onclick = () => saveNew(false);
+  $("#again").onclick = () => saveNew(true);
+}
+
+async function uploadPhotos(files, kindFirst) {
+  const out = [];
+  for (const [i, f] of files.entries()) {
+    const p = await processPhoto(f);
+    const a = await S.assets.upload(p.full);
+    const t = await S.assets.upload(p.thumb);
+    out.push({ id: a.id, thumb: t.id, w: p.w, h: p.h, kind: i === 0 ? kindFirst : "detail", color: p.color, source: "own" });
+  }
+  return out;
+}
+function uploadError(e) {
+  const c = e && e.code;
+  if (c === "too_large") return "That photo is too large. Try a smaller one.";
+  if (c === "unsupported_type") return "That file type is not supported. Use a JPEG, PNG or WebP photo.";
+  if (c === "quota_or_state") return "Photo storage is full.";
+  if (c === "rate_limited") return "Too many uploads at once. Wait a moment and save again.";
+  if (e && e.message === "unreadable") return "That photo could not be read. iPhone HEIC photos: choose 'Most compatible' in camera settings, or send a JPEG.";
+  return "Saving failed. Check your connection and try again.";
+}
+async function saveNew(again) {
+  const d = S.draft;
+  if (S.busy || !(d.name || "").trim() || !d.category) return;
+  S.busy = true; S.err = ""; viewAdd();
+  try {
+    const images = S.files.length && S.assets ? await uploadPhotos(S.files.map((f) => f.file), "front") : [];
+    const rec = cleanRecord(d);
+    if (!rec.color && images[0]) { rec.color = images[0].color; rec.colorFamily = family(rec.color); }
+    const id = newId(), now = Date.now();
+    await S.db.collection("garments").doc(id).set({ ...rec, images, fav: false, deleted: false, createdAt: now, updatedAt: now });
+    S.busy = false;
+    if (again) { newDraft({ category: d.category, brand: d.brand, status: d.status }); toast("Saved"); viewAdd(); window.scrollTo(0, 0); }
+    else { S.draft = null; location.hash = "item-" + id; }
+  } catch (e) {
+    S.busy = false; S.err = uploadError(e); viewAdd();
+  }
+}
+
+// Item --------------------------------------------------------------------
+function viewItem({ id }) {
+  if (needStore()) return;
+  const g = byId(id);
+  if (!g) {
+    $("#top").innerHTML = `<div class="top-row"><a class="back label" href="#wardrobe" style="text-decoration:none">Wardrobe</a></div>`;
+    $("#main").innerHTML = S.loaded ? emptyBox("Piece not found", "It may have been deleted.", `<a class="btn full" href="#wardrobe">Back to wardrobe</a>`) : emptyBox("Loading", "Fetching this piece.");
+    return;
+  }
+  const order = filtered().list.map((x) => x.id); const ix = order.indexOf(id);
+  const prev = ix > 0 ? order[ix - 1] : null, next = ix >= 0 && ix < order.length - 1 ? order[ix + 1] : null;
+  $("#top").innerHTML = `<div class="top-row">
+    <a class="back label" href="#wardrobe" style="text-decoration:none">Wardrobe</a>
+    <span class="grow mute" style="padding:0 12px;font-size:11px;font-variant-numeric:tabular-nums">${ix >= 0 ? ix + 1 + " / " + order.length : ""}</span>
+    <a class="tbtn label" style="text-decoration:none;color:${prev ? "var(--ink)" : "var(--line)"}" ${prev ? `href="#item-${prev}"` : `aria-disabled="true"`}>Prev</a>
+    <a class="tbtn label" style="text-decoration:none;color:${next ? "var(--ink)" : "var(--line)"}" ${next ? `href="#item-${next}"` : `aria-disabled="true"`}>Next</a></div>`;
+  const imgs = g.images || [];
+  const cur = imgs[Math.min(S.slide, imgs.length - 1)];
+  const facts = [
+    ["Category", catLabel(g.category)], ["Size", g.size],
+    ["Colour", g.color ? `<span class="swatch" style="background:${esc(g.color)}"></span><span class="cap1" style="display:inline-block">${esc(g.colorFamily || "")}</span>` : null, true],
+    ["Season", (g.seasons || []).join(", ")], ["Collection", g.collection], ["Material", g.material], ["Fit", g.fit], ["Silhouette", g.silhouette],
+    ["Style", (g.styles || []).join(", ")], ["Formality", g.formality ? FORMALITY[g.formality] : null], ["Layer", g.layer], ["Pattern", g.pattern],
+    ["Price", g.price != null ? String(g.price) : null], ["Bought", g.bought], ["Tags", (g.tags || []).join(", ")],
+  ].filter((f) => f[1]);
+  const missing = ["fit", "silhouette", "styles", "formality", "seasons"].filter((k) => g[k] == null || (Array.isArray(g[k]) && !g[k].length)).length;
+  const editing = !!S.edit;
+
+  $("#main").innerHTML = `<div class="detail">
+    <section>
+      <div class="carousel" id="car">${imgs.length ? imgs.map((im) => `<div class="slide">${photo(im, 0.8, true)}</div>`).join("") : `<div class="slide">${photo(null, 0.8)}</div>`}</div>
+      ${imgs.length > 1 ? `<div class="dots">${imgs.map((_, i) => `<span class="${i === S.slide ? "on" : ""}"></span>`).join("")}</div>` : ""}
+      ${S.canWrite ? `<div class="photobar">
+        <span class="label mute">${cur ? esc(cur.kind) : "No photo"}</span>
+        ${cur && S.slide > 0 ? `<button class="label" id="cover">Make cover</button>` : ""}
+        ${cur ? `<button class="label" id="rmimg">Remove</button>` : ""}
+        ${S.assets ? `<label class="label" style="gap:6px">As <select id="kind" class="label" aria-label="Photo type">${KINDS.map((k) => `<option ${k === "back" ? "selected" : ""}>${k}</option>`).join("")}</select></label><button class="label" id="addimg">+ Photo</button>` : ""}
+      </div><input type="file" id="file2" accept="image/*" multiple hidden>` : ""}
+    </section>
+    <section>
+      <div class="head">${g.brand ? `<div class="label">${esc(g.brand)}</div>` : ""}<h1>${esc(g.name)}</h1>
+        <div class="meta mute"><span class="cap1">${esc(g.status || "owned")}</span><span>Added ${new Date(g.createdAt || Date.now()).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span></div></div>
+      ${S.canWrite ? `<div class="quad">
+        <button class="label" id="fav" aria-pressed="${!!g.fav}">${g.fav ? "Favourited" : "Favourite"}</button>
+        <button class="label" id="edit">${editing ? "Cancel" : "Edit"}</button>
+        <button class="label" id="dup">Duplicate</button>
+        <button class="label del" id="del">Delete</button></div>` : ""}
+      ${S.confirmDel ? `<div class="confirm"><span>Delete this piece? It leaves your wardrobe, lists and outfit suggestions.</span><div class="btns"><button class="btn danger" id="del-yes">Delete</button><button class="btn" id="del-no">Keep</button></div></div>` : ""}
+      ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
+      ${editing ? `<div id="fields">${fieldsHTML(S.edit, true)}</div>
+        <div class="actions"><button class="label" id="cancel">Cancel</button><button class="label solid" id="save" ${S.busy ? "disabled" : ""}>${S.busy ? "Saving" : "Save changes"}</button></div>`
+      : `<dl>${facts.map(([k, v, raw]) => `<div class="fact"><dt class="label">${k}</dt><dd class="cap1">${raw ? v : esc(v)}</dd></div>`).join("")}</dl>
+        ${missing && S.canWrite ? `<button class="missing" id="complete"><span>${missing} styling details missing</span><span class="label mute">Complete</span></button>` : ""}
+        ${g.notes ? `<div class="notes"><div class="label mute" style="margin-bottom:6px">Notes</div>${esc(g.notes)}</div>` : ""}`}
+    </section></div>`;
+
+  const car = $("#car");
+  if (S.slide && car) car.scrollLeft = car.clientWidth * S.slide;
+  car.onscroll = () => {
+    const i = Math.round(car.scrollLeft / car.clientWidth);
+    if (i !== S.slide) { S.slide = i; document.querySelectorAll(".dots span").forEach((d, j) => d.classList.toggle("on", j === i));
+      const k = $(".photobar .label.mute"); if (k && imgs[i]) k.textContent = imgs[i].kind;
+      clearTimeout(car.t); car.t = setTimeout(() => viewItem({ id }), 250); }
+  };
+  if (!S.canWrite) return;
+  const save = async (patch, msg) => {
+    S.busy = true; S.err = "";
+    try { await S.db.collection("garments").doc(g.id).update({ ...patch, updatedAt: Date.now() }); if (msg) toast(msg); }
+    catch (e) { S.err = "Saving failed. Check your connection and try again."; }
+    S.busy = false; render();
+  };
+  $("#fav").onclick = () => save({ fav: !g.fav }, g.fav ? "Removed from favourites" : "Added to favourites");
+  const startEdit = () => { S.edit = { ...g, formality: g.formality ? String(g.formality) : "", price: g.price != null ? String(g.price) : "" }; render(); };
+  $("#edit").onclick = () => { if (S.edit) { S.edit = null; render(); } else startEdit(); };
+  $("#complete")?.addEventListener("click", startEdit);
+  $("#dup").onclick = async () => {
+    const nid = newId(), now = Date.now();
+    const copy = JSON.parse(JSON.stringify(g)); delete copy.id;
+    try { await S.db.collection("garments").doc(nid).set({ ...copy, name: g.name + " (copy)", fav: false, createdAt: now, updatedAt: now }); toast("Duplicated"); location.hash = "item-" + nid; }
+    catch { S.err = "Duplicating failed."; render(); }
+  };
+  $("#del").onclick = () => { S.confirmDel = true; render(); };
+  $("#del-no")?.addEventListener("click", () => { S.confirmDel = false; render(); });
+  $("#del-yes")?.addEventListener("click", async () => {
+    // Soft delete: the piece leaves every view and the outfit engine at once.
+    try { await S.db.collection("garments").doc(g.id).update({ deleted: true, deletedAt: Date.now() }); S.confirmDel = false; toast("Deleted"); location.hash = "wardrobe"; }
+    catch { S.err = "Deleting failed."; render(); }
+  });
+  if (editing) {
+    const sync = () => { $("#save").disabled = !(S.edit.name || "").trim() || S.busy; };
+    bindFields($("#fields"), S.edit, sync);
+    $("#cancel").onclick = () => { S.edit = null; render(); };
+    $("#save").onclick = async () => { const rec = cleanRecord(S.edit); if (!rec.name) return; S.edit = null; await save(rec, "Saved"); };
+  }
+  $("#cover")?.addEventListener("click", () => { const a = [...imgs]; const [m] = a.splice(S.slide, 1); a.unshift(m); S.slide = 0; save({ images: a }, "Cover changed"); });
+  $("#rmimg")?.addEventListener("click", () => { const a = imgs.filter((_, i) => i !== S.slide); S.slide = 0; save({ images: a }, "Photo removed"); });
+  const f2 = $("#file2");
+  $("#addimg")?.addEventListener("click", () => f2.click());
+  if (f2) f2.onchange = async () => {
+    const files = [...f2.files]; f2.value = ""; if (!files.length) return;
+    S.busy = true; toast("Uploading");
+    try { const kind = $("#kind")?.value || "detail"; const added = (await uploadPhotos(files, kind)).map((x) => ({ ...x, kind }));
+      await save({ images: [...imgs, ...added] }, "Photo added"); S.slide = imgs.length; render(); }
+    catch (e) { S.busy = false; S.err = uploadError(e); render(); }
+  };
+}
+
+// Profile -------------------------------------------------------------------
+function viewProfile() {
+  if (needStore()) return;
+  $("#top").innerHTML = `<div class="top-row"><span class="word">RAIL</span><span class="label title grow">Profile</span></div>`;
+  const all = live(), owned = all.filter((g) => (g.status || "owned") === "owned");
+  const brands = new Set(owned.map((g) => (g.brand || "").toLowerCase()).filter(Boolean));
+  const stats = [["Pieces", owned.length], ["Brands", brands.size], ["Favourites", owned.filter((g) => g.fav).length], ["Wishlist", all.filter((g) => g.status === "wishlist").length]];
+  const byCat = CATEGORIES.map(([id, l]) => [l, owned.filter((g) => g.category === id).length]).filter((x) => x[1]);
+  const max = Math.max(1, ...byCat.map((x) => x[1]));
+  const byCol = Object.entries(owned.reduce((m, g) => (g.colorFamily && (m[g.colorFamily] = (m[g.colorFamily] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]);
+  $("#main").innerHTML = `<div class="stats">${stats.map(([k, v]) => `<div><div class="label mute">${k}</div><div class="v">${v}</div></div>`).join("")}</div>
+    <div class="label mute gut" style="padding-block:14px;border-bottom:1px solid var(--line)">By category</div>
+    ${byCat.length ? `<ul class="bars">${byCat.map(([k, n]) => `<li><span>${esc(k)}</span><span class="t"><i style="width:${(n / max) * 100}%"></i></span><span class="c">${n}</span></li>`).join("")}</ul>` : `<p class="mute gut" style="padding-block:14px;margin:0">Add pieces to see how your wardrobe is spread.</p>`}
+    ${byCol.length ? `<div class="label mute gut" style="padding-block:14px;border-bottom:1px solid var(--line)">Palette</div>
+    <div style="display:flex;height:28px;border-bottom:1px solid var(--line)">${byCol.map(([c, n]) => `<span title="${esc(c)} ${n}" style="flex:${n};background:${FAMILY_HEX[c]}"></span>`).join("")}</div>
+    <div class="gut chips" style="padding-block:12px">${byCol.map(([c, n]) => `<span class="chip"><span class="sw" style="background:${FAMILY_HEX[c]}"></span><span class="cap1">${c}</span><span class="n">${n}</span></span>`).join("")}</div>` : ""}
+    <div class="version gut"><span><span class="label mute">App version</span><br>${APP_VERSION}</span>
+      <button class="btn${S.updateReady ? " solid" : ""}" id="check">${S.updateReady ? "Update now" : "Check for updates"}</button></div>
+    ${installRow()}
+    <div class="gut tools">
+      <span class="label mute">Your data</span>
+      <p class="mute" style="margin:0">Your wardrobe is stored on this device only. Back it up now and then, and keep the file somewhere safe (Files, iCloud Drive, Google Drive).</p>
+      <button class="btn solid full" id="backup">Back up wardrobe</button>
+      <button class="btn full" id="restore">Restore from backup</button>
+      <input type="file" id="restore-file" accept="application/json,.json" hidden>
+    </div>`;
+  $("#check").onclick = async () => {
+    if (S.updateReady) return applyUpdate();
+    const b = $("#check"); b.disabled = true; b.textContent = "Checking";
+    try { await S.reg?.update(); } catch {}
+    setTimeout(() => {
+      if (S.updateReady) { renderUpdate(); viewProfile(); }
+      else { b.disabled = false; b.textContent = "Check for updates"; toast(S.reg ? "You have the latest version" : "Updates work once RAIL is installed"); }
+    }, 1500);
+  };
+  bindInstall();
+  $("#backup").onclick = backup;
+  $("#restore").onclick = () => $("#restore-file").click();
+  $("#restore-file").onchange = (e) => restore(e.target.files[0]);
+}
+function viewSoon({ v }) {
+  const copy = {
+    lists: ["Lists", "Group pieces you already own: an autumn rotation, a travel set, everyday essentials. One piece can sit in many lists."],
+    boards: ["Boards", "Collect garments, reference images, notes and colours on one board, as a grid or a free canvas."],
+    outfits: ["Outfits", "Build outfits from your own wardrobe: random, colour-matched, or around one centrepiece. Lock what you like and reshuffle the rest."],
+  }[v];
+  $("#top").innerHTML = `<div class="top-row"><span class="word">RAIL</span><span class="label title grow">${copy[0]}</span></div>`;
+  $("#main").innerHTML = emptyBox("Coming next", copy[1]);
+}
+
+// ---------- Storage on this device (IndexedDB) ----------
+// Same shape as the cloud store the app was written against, so moving to
+// an online database later swaps this block only.
+const Local = (() => {
+  let dbp;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open("rail", 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore("garments"); r.result.createObjectStore("blobs"); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  const run = async (store, mode, fn) => {
+    const d = await open();
+    return new Promise((res, rej) => {
+      const t = d.transaction(store, mode), out = fn(t.objectStore(store));
+      t.oncomplete = () => res(out && out.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+    });
+  };
+  const entries = async (store) => {
+    const d = await open();
+    return new Promise((res, rej) => {
+      const out = [], t = d.transaction(store, "readonly"), c = t.objectStore(store).openCursor();
+      c.onsuccess = () => { const cur = c.result; if (cur) { out.push([cur.key, cur.value]); cur.continue(); } };
+      t.oncomplete = () => res(out); t.onerror = () => rej(t.error);
+    });
+  };
+  const items = new Map(), subs = new Set();
+  const emit = () => setTimeout(() => {
+    const docs = [...items].map(([id, v]) => ({ id, exists: true, data: () => v, metadata: { fromCache: false } }));
+    subs.forEach((fn) => fn({ docs, metadata: { fromCache: false, hasPendingWrites: false } }));
+  });
+  const clone = (v) => JSON.parse(JSON.stringify(v));
+  let asked = false;
+  // Ask the browser not to clear RAIL's storage when the device runs low.
+  const persist = () => { if (asked) return; asked = true; try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {} };
+  const ref = (id) => ({
+    id,
+    async get() { return { id, exists: items.has(id), data: () => items.get(id) }; },
+    async set(v) { const c = clone(v); await run("garments", "readwrite", (s) => s.put(c, id)); items.set(id, c); persist(); emit(); },
+    async update(p) {
+      if (!items.has(id)) throw { code: "invalid_argument" };
+      const c = { ...items.get(id), ...clone(p) };
+      await run("garments", "readwrite", (s) => s.put(c, id)); items.set(id, c); emit();
+    },
+  });
+  const db = {
+    collection: () => ({ doc: (id) => ref(id), onSnapshot(fn) { subs.add(fn); emit(); return () => subs.delete(fn); } }),
+    doc: () => ({ async get() { return { exists: false, data: () => undefined }; }, onSnapshot() { return () => {}; } }),
+  };
+  const assets = {
+    async upload(blob) {
+      const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+      await run("blobs", "readwrite", (s) => s.put(blob, id));
+      URLS.set(id, URL.createObjectURL(blob));
+      return { id, url: URLS.get(id) };
+    },
+  };
+  return {
+    db, assets, entries,
+    async load() {
+      for (const [id, v] of await entries("garments")) items.set(id, v);
+      for (const [id, b] of await entries("blobs")) URLS.set(id, URL.createObjectURL(b));
+    },
+    async replaceAll(records, blobs) {
+      for (const [id, b] of blobs) { await run("blobs", "readwrite", (s) => s.put(b, id)); URLS.set(id, URL.createObjectURL(b)); }
+      for (const [id, v] of records) { await run("garments", "readwrite", (s) => s.put(v, id)); items.set(id, v); }
+      persist(); emit();
+    },
+  };
+})();
+
+// ---------- Backup and restore ----------
+const toDataUrl = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); });
+async function backup() {
+  const b = $("#backup"); b.disabled = true; b.textContent = "Preparing backup";
+  try {
+    const garments = Object.fromEntries(await Local.entries("garments"));
+    const used = new Set(Object.values(garments).flatMap((g) => (g.images || []).flatMap((i) => [i.id, i.thumb])));
+    const photos = {};
+    for (const [id, blob] of await Local.entries("blobs")) if (used.has(id)) photos[id] = await toDataUrl(blob);
+    const name = "rail-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+    const file = new File([JSON.stringify({ app: "RAIL", version: 1, savedAt: new Date().toISOString(), garments, photos })], name, { type: "application/json" });
+    // Phones: the share sheet (Save to Files, Drive, AirDrop). Computers: a download.
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: "RAIL backup" }); toast("Backup ready"); }
+      catch (e) { if (e && e.name !== "AbortError") throw e; }
+    } else {
+      const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast("Backup saved");
+    }
+  } catch { toast("Backup failed. Try again."); }
+  b.disabled = false; b.textContent = "Back up wardrobe";
+}
+async function restore(file) {
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (data.app !== "RAIL" || !data.garments) throw new Error("not a backup");
+    const blobs = [];
+    for (const [id, url] of Object.entries(data.photos || {})) blobs.push([id, await (await fetch(url)).blob()]);
+    await Local.replaceAll(Object.entries(data.garments), blobs);
+    toast(`Restored ${Object.keys(data.garments).length} pieces`);
+    location.hash = "wardrobe";
+  } catch { toast("That file is not a RAIL backup."); }
+}
+
+// ---------- Install and updates ----------
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let installPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; if (route().v === "profile") viewProfile(); });
+function installRow() {
+  if (isStandalone()) return "";
+  if (installPrompt) return `<div class="install gut"><span>Install RAIL on this device for a full-screen app with its own icon.</span><button class="btn solid" id="install">Install</button></div>`;
+  if (isIOS()) return `<div class="install gut"><span>To install: tap <b>Share</b> in Safari, then <b>Add to Home Screen</b>.</span></div>`;
+  return `<div class="install gut"><span>To install: open the browser menu and choose <b>Install app</b> or <b>Add to Home screen</b>.</span></div>`;
+}
+function bindInstall() {
+  const b = $("#install");
+  if (b) b.onclick = async () => { installPrompt.prompt(); await installPrompt.userChoice.catch(() => {}); installPrompt = null; viewProfile(); };
+}
+function registerUpdater() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (S.updating) location.reload(); });
+  navigator.serviceWorker.register("sw.js").then((reg) => {
+    S.reg = reg;
+    const check = () => { if (reg.waiting && navigator.serviceWorker.controller) { S.updateReady = true; renderUpdate(); if (route().v === "profile") viewProfile(); } };
+    check();
+    reg.addEventListener("updatefound", () => {
+      const w = reg.installing;
+      if (w) w.addEventListener("statechange", () => { if (w.state === "installed") check(); });
+    });
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
+  }).catch(() => {});
+}
+
+// Fade photos in once loaded; mark ones that fail instead of showing a broken icon.
+document.addEventListener("load", (e) => { if (e.target.tagName === "IMG" && e.target.closest(".well")) e.target.classList.add("on"); }, true);
+document.addEventListener("error", (e) => {
+  const w = e.target.tagName === "IMG" && e.target.closest(".well");
+  if (w && !w.querySelector(".none")) w.insertAdjacentHTML("beforeend", `<div class="none label mute">Photo missing</div>`);
+}, true);
+
+// ---------- Boot: render at once, light up when the store answers ----------
+if (route().v === "add") newDraft();
+render();
+$("#update-btn").onclick = applyUpdate;
+(async () => {
+  try {
+    await Local.load();
+    S.db = Local.db; S.assets = Local.assets; S.canWrite = true;
+    render();
+    S.db.collection("garments").onSnapshot((snap) => {
+      S.items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      S.loaded = true;
+      const r = route();
+      if (S.edit || r.v === "add") return;
+      if (S.filterOpen) { renderLayer(); renderGrid(); updateCount(); return; }
+      render();
+    });
+  } catch (e) {
+    S.failed = "nodb"; render();
+  }
+  registerUpdater();
+})();
+</script>
+</body>
+</html>
