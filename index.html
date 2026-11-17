@@ -115,6 +115,7 @@ main { padding-bottom: calc(var(--bar) + env(safe-area-inset-bottom, 0px) + 76px
 .group > .label { margin-bottom: 10px; display: block; color: var(--mute); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { height: 32px; padding: 0 11px; border: 1px solid var(--line); font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
+a.chip { color: inherit; text-decoration: none; }
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .chip .sw { width: 10px; height: 10px; border: 1px solid var(--line); }
 .chip .n { color: var(--mute); font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -365,7 +366,7 @@ function family(hex) {
 
 // ---------- Version ----------
 // Raised together with VERSION in sw.js on every release.
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.3.0";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 function applyUpdate() {
@@ -683,6 +684,7 @@ function viewAdd() {
     ${S.files.length ? "" : `<a class="batch-link" href="#batch" id="to-batch"><span class="label">Add many at once</span><br><span class="mute">Pick several photos, each becomes its own piece.</span></a>`}
     <input type="file" id="file" accept="image/*" multiple hidden>
     <div id="fields">${fieldsHTML(d, S.more)}</div>
+    <div class="row" id="online">${onlineHTML(d)}</div>
     <button class="more label" id="more">${S.more ? "Fewer details" : "More details"}</button>
     ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
     <div class="actions"><button class="label" id="again" ${ok && !S.busy ? "" : "disabled"}>Save, add another</button><button class="label solid" id="save" ${ok && !S.busy ? "" : "disabled"}>${S.busy ? "Saving" : "Save"}</button></div>
@@ -694,10 +696,29 @@ function viewAdd() {
   document.querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => { const f = S.files.splice(+b.dataset.rm, 1)[0]; URL.revokeObjectURL(f.url); viewAdd(); });
   $("#more").onclick = () => { S.more = !S.more; viewAdd(); };
   $("#demo").onclick = fillDemo;
-  const sync = () => { const ok2 = (d.name || "").trim() && d.category; $("#save").disabled = $("#again").disabled = !ok2 || S.busy; };
+  const sync = () => { const ok2 = (d.name || "").trim() && d.category; $("#save").disabled = $("#again").disabled = !ok2 || S.busy; $("#online").innerHTML = onlineHTML(d); };
   bindFields($("#fields"), d, sync);
   $("#save").onclick = () => saveNew(false);
   $("#again").onclick = () => saveNew(true);
+}
+
+// Search online ---------------------------------------------------------------
+// Opens the typed brand and name on resale sites in the browser. RAIL never copies
+// listings itself: the person saves a photo there and adds it here.
+const ONLINE = [
+  ["Grailed", "https://www.grailed.com/shop?query="],
+  ["The RealReal", "https://www.therealreal.com/products?keywords="],
+  ["eBay", "https://www.ebay.com/sch/i.html?_nkw="],
+  ["Google Images", "https://www.google.com/search?tbm=isch&q="],
+];
+function onlineHTML(d) {
+  const q = [d.brand, d.name].map((x) => (x || "").trim()).filter(Boolean).join(" ");
+  const links = ONLINE.map(([l, u]) => q
+    ? `<a class="chip" href="${u + encodeURIComponent(q)}" target="_blank" rel="noopener noreferrer">${esc(l)}</a>`
+    : `<span class="chip" aria-disabled="true" style="opacity:.35">${esc(l)}</span>`).join("");
+  return `<span class="label">Search online${q ? `: <span style="text-transform:none;letter-spacing:0;color:var(--ink)">${esc(q)}</span>` : ""}</span>
+    <div class="chips">${links}</div>
+    <p class="mute" style="margin:8px 0 0">${q ? "Opens in your browser. Save a photo there, then add it above with Add photos." : "Type a brand or name to search resale sites for photos and details."}</p>`;
 }
 
 // Batch add ------------------------------------------------------------------
