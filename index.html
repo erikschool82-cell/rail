@@ -136,6 +136,12 @@ textarea.field { min-height: 72px; resize: vertical; }
 .actions button { height: 52px; background: var(--paper); }
 .actions button.solid { background: var(--ink); color: var(--paper); }
 .actions button:disabled { opacity: .4; }
+.batch-link { display: block; width: 100%; text-align: left; padding: 14px 16px; border-bottom: 1px solid var(--line); text-decoration: none; }
+.brow { display: grid; grid-template-columns: 72px minmax(0, 1fr) 32px; gap: 12px; align-items: start; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.brow .shot { aspect-ratio: 4 / 5; }
+.brow .x { width: 32px; height: 32px; font-size: 16px; }
+.brow select.field { margin-top: 6px; font-size: 14px; }
+.brow.saved { opacity: .35; }
 .err { color: var(--alert); padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .more { padding: 14px 16px; display: block; text-decoration: underline; text-underline-offset: 4px; }
 
@@ -359,7 +365,7 @@ function family(hex) {
 
 // ---------- Version ----------
 // Raised together with VERSION in sw.js on every release.
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 function applyUpdate() {
@@ -437,20 +443,20 @@ const byId = (id) => live().find((g) => g.id === id);
 function route() {
   const h = location.hash.slice(1) || "wardrobe";
   if (h.startsWith("item-")) return { v: "item", id: h.slice(5) };
-  return { v: ["wardrobe", "add", "lists", "boards", "outfits", "profile"].includes(h) ? h : "wardrobe" };
+  return { v: ["wardrobe", "add", "batch", "lists", "boards", "outfits", "profile"].includes(h) ? h : "wardrobe" };
 }
-window.addEventListener("hashchange", () => { S.edit = null; S.confirmDel = false; S.slide = 0; S.err = ""; if (route().v === "add" && !S.draft) newDraft(); render(); window.scrollTo(0, 0); });
+window.addEventListener("hashchange", () => { S.edit = null; S.confirmDel = false; S.slide = 0; S.err = ""; if (route().v === "add" && !S.draft) newDraft(); if (route().v !== "batch" && S.batch && !S.batch.busy) clearBatch(); render(); window.scrollTo(0, 0); });
 function newDraft(keep) { S.draft = { status: "owned", ...(keep || {}) }; S.files.forEach((f) => URL.revokeObjectURL(f.url)); S.files = []; S.more = false; S.err = ""; }
 
 // ---------- Render ----------
 function render() {
   const r = route();
   document.querySelectorAll("#nav a").forEach((a) => {
-    const on = a.dataset.v === r.v || (a.dataset.v === "wardrobe" && (r.v === "item" || r.v === "add"));
+    const on = a.dataset.v === r.v || (a.dataset.v === "wardrobe" && (r.v === "item" || r.v === "add" || r.v === "batch"));
     a.toggleAttribute("aria-current", false); if (on) a.setAttribute("aria-current", "page");
   });
   $("#fab").hidden = !(r.v === "wardrobe") || !S.canWrite || !S.db;
-  const v = { wardrobe: viewWardrobe, add: viewAdd, item: viewItem, profile: viewProfile, lists: viewSoon, boards: viewSoon, outfits: viewSoon }[r.v];
+  const v = { wardrobe: viewWardrobe, add: viewAdd, batch: viewBatch, item: viewItem, profile: viewProfile, lists: viewSoon, boards: viewSoon, outfits: viewSoon }[r.v];
   v(r);
   renderLayer();
 }
@@ -674,6 +680,7 @@ function viewAdd() {
   const ok = (d.name || "").trim() && d.category;
   $("#main").innerHTML = `<div class="form-wrap">
     ${shots}
+    ${S.files.length ? "" : `<a class="batch-link" href="#batch" id="to-batch"><span class="label">Add many at once</span><br><span class="mute">Pick several photos, each becomes its own piece.</span></a>`}
     <input type="file" id="file" accept="image/*" multiple hidden>
     <div id="fields">${fieldsHTML(d, S.more)}</div>
     <button class="more label" id="more">${S.more ? "Fewer details" : "More details"}</button>
@@ -691,6 +698,81 @@ function viewAdd() {
   bindFields($("#fields"), d, sync);
   $("#save").onclick = () => saveNew(false);
   $("#again").onclick = () => saveNew(true);
+}
+
+// Batch add ------------------------------------------------------------------
+// One photo, one piece. Category and brand can be set once for the whole batch;
+// each piece can still get its own name and category. Details come later.
+function clearBatch() { if (S.batch) S.batch.rows.forEach((r) => URL.revokeObjectURL(r.url)); S.batch = null; }
+function viewBatch() {
+  if (needStore()) return;
+  const B = S.batch || (S.batch = { rows: [], category: "", brand: "", busy: false, err: "", done: 0, total: 0 });
+  const left = B.rows.filter((r) => !r.saved);
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  $("#top").innerHTML = `<div class="top-row"><a class="back label" href="#add" style="text-decoration:none">Close</a><span class="label title grow">Batch add</span><span class="mute gut" style="font-size:11px">${B.rows.length ? plural(left.length, "piece") : ""}</span></div>`;
+  const catOf = (r) => r.category || B.category;
+  const ready = left.length && left.every(catOf) && !B.busy;
+  const opts = (v) => `<option value="">${B.category ? "Same as all (" + esc(catLabel(B.category)) + ")" : "Choose category"}</option>` + CATEGORIES.map(([id, l]) => `<option value="${id}" ${v === id ? "selected" : ""}>${esc(l)}</option>`).join("");
+  const lock = (r) => (r.saved || B.busy ? "disabled" : "");
+  $("#main").innerHTML = `<div class="form-wrap">
+    ${B.rows.length ? "" : `<button class="pick" id="pick"><span class="label">Choose photos</span><span class="mute">Pick as many as you like. Each photo becomes its own piece.</span></button>`}
+    <input type="file" id="bfile" accept="image/*" multiple hidden>
+    <div class="row"><span class="label">Category for all</span><div class="chips">${CATEGORIES.map(([id, l]) => `<button type="button" class="chip" data-bcat="${id}" aria-pressed="${B.category === id}" ${B.busy ? "disabled" : ""}>${esc(l)}</button>`).join("")}</div></div>
+    <div class="row"><span class="label">Brand for all</span><input class="field" id="b-brand" value="${esc(B.brand)}" placeholder="Optional" autocomplete="off" ${B.busy ? "disabled" : ""}></div>
+    ${B.rows.map((r, i) => `<div class="brow${r.saved ? " saved" : ""}">
+      <div class="shot"><img src="${r.url}" alt=""></div>
+      <div><input class="field" data-bname="${i}" value="${esc(r.name)}" placeholder="Name (optional)" autocomplete="off" ${lock(r)}>
+        <select class="field" data-bc="${i}" aria-label="Category for photo ${i + 1}" ${lock(r)}>${opts(r.category)}</select></div>
+      ${r.saved ? `<span class="label mute">Saved</span>` : `<button class="x" data-brm="${i}" aria-label="Remove photo ${i + 1}" ${B.busy ? "disabled" : ""}>×</button>`}
+    </div>`).join("")}
+    ${B.rows.length ? `<p class="mute gut" style="margin:12px 0">Empty names become the category and a number. Colour is taken from each photo. Add size and the rest later from each piece.</p>` : ""}
+    ${B.err ? `<div class="err">${esc(B.err)}</div>` : ""}
+    <div class="actions"><button class="label" id="b-more" ${B.busy ? "disabled" : ""}>+ Photos</button><button class="label solid" id="b-save" ${ready ? "" : "disabled"}>${B.busy ? `Saving ${Math.min(B.done + 1, B.total)} of ${B.total}` : left.length ? `Save ${plural(left.length, "piece")}` : "Save"}</button></div>
+  </div>`;
+  const file = $("#bfile");
+  const open = () => file.click();
+  $("#pick")?.addEventListener("click", open);
+  $("#b-more").onclick = open;
+  file.onchange = () => { for (const f of file.files) B.rows.push({ file: f, url: URL.createObjectURL(f), name: "", category: "" }); file.value = ""; B.err = ""; viewBatch(); };
+  document.querySelectorAll("[data-bcat]").forEach((b) => b.onclick = () => { B.category = B.category === b.dataset.bcat ? "" : b.dataset.bcat; viewBatch(); });
+  $("#b-brand").oninput = (e) => (B.brand = e.target.value);
+  document.querySelectorAll("[data-bname]").forEach((i) => i.oninput = () => (B.rows[+i.dataset.bname].name = i.value));
+  document.querySelectorAll("[data-bc]").forEach((sel) => sel.onchange = () => { B.rows[+sel.dataset.bc].category = sel.value; viewBatch(); });
+  document.querySelectorAll("[data-brm]").forEach((b) => b.onclick = () => { const r = B.rows.splice(+b.dataset.brm, 1)[0]; URL.revokeObjectURL(r.url); viewBatch(); });
+  $("#b-save").onclick = saveBatch;
+}
+async function saveBatch() {
+  const B = S.batch;
+  if (!B || B.busy) return;
+  const todo = B.rows.filter((r) => !r.saved);
+  if (!todo.length || !todo.every((r) => r.category || B.category)) return;
+  B.busy = true; B.err = ""; B.done = 0; B.total = todo.length; viewBatch();
+  // Number unnamed pieces after what is already in the wardrobe: "Shoes 3", "Shoes 4".
+  const count = {};
+  for (const g of S.items) if (!g.deleted) count[g.category] = (count[g.category] || 0) + 1;
+  let lastErr = "";
+  for (const r of todo) {
+    const cat = r.category || B.category;
+    try {
+      const images = await uploadPhotos([r.file], "front");
+      const name = r.name.trim() || `${catLabel(cat)} ${(count[cat] || 0) + 1}`;
+      const rec = cleanRecord({ name, category: cat, brand: B.brand, status: "owned" });
+      if (images[0]) { rec.color = images[0].color; rec.colorFamily = family(rec.color); }
+      const now = Date.now();
+      await S.db.collection("garments").doc(newId()).set({ ...rec, images, fav: false, deleted: false, createdAt: now, updatedAt: now });
+      count[cat] = (count[cat] || 0) + 1;
+      r.saved = true; B.done++;
+    } catch (e) {
+      // Keep going; a photo that failed stays in the list to retry.
+      lastErr = uploadError(e);
+    }
+    if (route().v === "batch") viewBatch();
+  }
+  B.busy = false;
+  const failed = B.rows.filter((r) => !r.saved).length;
+  if (!failed) { toast(`Added ${B.done} ${B.done === 1 ? "piece" : "pieces"}`); clearBatch(); location.hash = "wardrobe"; return; }
+  B.err = `${failed} ${failed === 1 ? "photo was" : "photos were"} not saved. ${lastErr}`;
+  if (route().v === "batch") viewBatch();
 }
 
 async function uploadPhotos(files, kindFirst) {
