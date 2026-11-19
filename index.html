@@ -379,6 +379,8 @@ async function fillDemo() {
   const d = nextDemo();
   const { photo, ...fields } = d;
   newDraft(fields);
+  // Demo values are hand-written; detection leaves them alone.
+  for (const k of Object.keys(fields)) touched(S.draft).add(k);
   S.more = true;
   try { const f = await demoFile(d); S.files.push({ file: f, url: URL.createObjectURL(f) }); } catch { toast("Demo photo unavailable offline"); }
   viewAdd();
@@ -638,7 +640,7 @@ const Outfit = (() => {
 
 // ---------- Version ----------
 // Raised together with VERSION in sw.js on every release.
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.8.0";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 function applyUpdate() {
@@ -752,14 +754,16 @@ async function processPhoto(file) {
     full = await new Promise((r) => big.toBlob(r, "image/jpeg", 0.88));
     thumb = await new Promise((r) => small.toBlob(r, "image/jpeg", 0.82));
   }
-  // Median colour of the centre: the garment, not the backdrop.
+  return { full, thumb, w, h, color: photoColour(src) };
+}
+// Median colour of the centre: the garment, not the backdrop.
+function photoColour(src) {
   const c = document.createElement("canvas"); c.width = 60; c.height = 60;
   const x = c.getContext("2d"); x.drawImage(src, 0, 0, 60, 60);
   const d = x.getImageData(18, 15, 24, 30).data, R = [], G = [], B = [];
   for (let i = 0; i < d.length; i += 4) { R.push(d[i]); G.push(d[i + 1]); B.push(d[i + 2]); }
   const med = (a) => a.sort((p, q) => p - q)[a.length >> 1];
-  const color = "#" + [med(R), med(G), med(B)].map((v) => v.toString(16).padStart(2, "0")).join("");
-  return { full, thumb, w, h, color };
+  return "#" + [med(R), med(G), med(B)].map((v) => v.toString(16).padStart(2, "0")).join("");
 }
 
 // ---------- State ----------
@@ -782,7 +786,7 @@ function route() {
   return { v: ["wardrobe", "add", "batch", "lists", "boards", "outfits", "profile", "settings"].includes(h) ? h : "wardrobe" };
 }
 window.addEventListener("hashchange", () => { S.edit = null; S.confirmDel = false; S.sheet = null; S.fit.sheet = null; S.slide = 0; S.err = ""; if (route().v === "add" && !S.draft) newDraft(); if (route().v !== "batch" && S.batch && !S.batch.busy) clearBatch(); render(); window.scrollTo(0, 0); });
-function newDraft(keep) { S.draft = { status: "owned", ...(keep || {}) }; S.files.forEach((f) => URL.revokeObjectURL(f.url)); S.files = []; S.more = false; S.err = ""; }
+function newDraft(keep) { S.draft = { status: "owned", ...(keep || {}) }; S.files.forEach((f) => URL.revokeObjectURL(f.url)); S.files = []; S.det = null; S.more = false; S.err = ""; }
 
 // ---------- Render ----------
 function render() {
@@ -977,9 +981,13 @@ function fieldsHTML(d, full) {
   }
   return h;
 }
+// Fields the person has set themself in a form; detection never overwrites them.
+const TOUCHED = new WeakMap();
+const touched = (d) => { if (!TOUCHED.has(d)) TOUCHED.set(d, new Set()); return TOUCHED.get(d); };
 function bindFields(root, d, onChange) {
   root.querySelectorAll("[data-one]").forEach((b) => b.onclick = () => {
     const k = b.dataset.one, v = b.dataset.v;
+    touched(d).add(k);
     d[k] = String(d[k]) === v && !["category", "status"].includes(k) ? "" : v;
     root.querySelectorAll(`[data-one="${k}"]`).forEach((x) => x.setAttribute("aria-pressed", String(d[k]) === x.dataset.v));
     onChange();
@@ -990,12 +998,13 @@ function bindFields(root, d, onChange) {
     b.setAttribute("aria-pressed", d[k].includes(v));
   });
   root.querySelectorAll("[data-f]").forEach((i) => i.oninput = () => {
+    touched(d).add(i.dataset.f);
     if (i.dataset.f === "tagsText") d.tags = i.value.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean);
     else d[i.dataset.f] = i.value;
     onChange();
   });
   const c = root.querySelector("#f-color");
-  if (c) c.oninput = () => { d.color = c.value; const sp = c.nextElementSibling; sp.innerHTML = `<span class="cap1">${esc(family(c.value) || "")}</span>`; };
+  if (c) c.oninput = () => { touched(d).add("color"); d.color = c.value; const sp = c.nextElementSibling; sp.innerHTML = `<span class="cap1">${esc(family(c.value) || "")}</span>`; };
 }
 function cleanRecord(d) {
   const out = {};
@@ -1024,6 +1033,7 @@ function viewAdd() {
   const ok = (d.name || "").trim() && d.category;
   $("#main").innerHTML = `<div class="form-wrap">
     ${shots}
+    <div id="det">${detectHTML()}</div>
     ${S.files.length ? "" : `<a class="batch-link" href="#batch" id="to-batch"><span class="label">Add many at once</span><br><span class="mute">Pick several photos, each becomes its own piece.</span></a>`}
     <input type="file" id="file" accept="image/*" multiple hidden>
     <div id="fields">${fieldsHTML(d, S.more)}</div>
@@ -1043,6 +1053,76 @@ function viewAdd() {
   bindFields($("#fields"), d, sync);
   $("#save").onclick = () => saveNew(false);
   $("#again").onclick = () => saveNew(true);
+  bindDetect();
+  detectDraft();
+}
+// Re-render a form without losing the field the person is typing in.
+function keepFocus(view) {
+  const a = document.activeElement, id = a && a.id, sel = a && typeof a.selectionStart === "number" ? [a.selectionStart, a.selectionEnd] : null;
+  view();
+  const b = id && document.getElementById(id);
+  if (b && b !== document.body) { b.focus({ preventScroll: true }); if (sel) try { b.setSelectionRange(...sel); } catch {} }
+}
+const refreshAdd = () => { if (route().v === "add") keepFocus(viewAdd); };
+
+// Detect in Add piece -----------------------------------------------------------
+// The cover photo fills in what the person has not set yet: category, a name
+// (colour and kind), layer and pattern. Asked once, since the model is a one-time
+// download; after that it runs on every new cover photo.
+const detectOn = () => pref.get("detect", false);
+const detName = (k, color) => { const f = family(color); return f ? `${f[0].toUpperCase() + f.slice(1)} ${k.name.toLowerCase()}` : k.name; };
+// pick: a kind the person tapped, which also replaces a category they chose.
+function applyDetect(d, k, r, pick) {
+  const t = touched(d);
+  if (pick || !t.has("category")) d.category = k.category;
+  // A layer only fits its own kind: a hoodie's "mid" means nothing on shoes.
+  if ((pick || !t.has("layer")) && d.category === k.category) d.layer = k.layer || "";
+  if (!t.has("name")) d.name = detName(k, t.has("color") && d.color ? d.color : r.color);
+  if (!pick && !t.has("pattern") && r.pattern.p >= PATTERN_SURE) d.pattern = r.pattern.id;
+}
+// Below this the pattern stays empty: a wrong "check" or "stripe" would make the
+// outfit rules turn down good outfits. Tested on 86 labelled photos.
+const PATTERN_SURE = 0.7;
+function detectDraft() {
+  const f = S.files[0];
+  if (!f || !detectOn() || (S.det && S.det.f === f)) return;
+  const job = S.det = { f, state: "work", p: 0, r: null, pick: 0 };
+  const paint = () => { const el = S.det === job && route().v === "add" && $("#det"); if (el) { el.innerHTML = detectHTML(); bindDetect(); } };
+  paint();
+  Detect.run(f.file, (st, p = 0) => {
+    const pct = Math.round(p * 100);
+    if (st === job.state && pct === Math.round(job.p * 100)) return;
+    job.state = st; job.p = p; paint();
+  }).then((r) => {
+    job.state = "done"; job.r = r;
+    if (S.det !== job || !S.draft) return;
+    applyDetect(S.draft, r.kinds[0], r);
+    refreshAdd();
+  }).catch(() => { job.state = "error"; paint(); });
+}
+function detectHTML() {
+  if (!S.files.length) return "";
+  if (!detectOn()) return `<button type="button" class="batch-link" id="det-go"><span class="label">Detect from photo</span><br><span class="mute">Fills in the type, a name and the pattern from the cover photo. Downloads ${Detect.MB} MB once. Photos stay on this phone.</span></button>`;
+  const j = S.det && S.det.f === S.files[0] ? S.det : null;
+  if (!j) return "";
+  if (j.state === "download") return `<div class="row"><span class="label" style="margin:0">Downloading detector ${Math.round(j.p * 100)}%</span></div>`;
+  if (j.state === "work") return `<div class="row"><span class="label" style="margin:0">Detecting</span></div>`;
+  if (j.state === "error") return `<div class="row"><span class="label">Detection did not work on this photo</span><button type="button" class="chip" id="det-retry">Try again</button></div>`;
+  const sure = j.r.kinds[0].p >= 0.5;
+  return `<div class="row"><span class="label">${sure ? "Detected" : "Best guess"}</span>
+    <div class="chips">${j.r.kinds.map((k, i) => `<button type="button" class="chip" data-kind="${i}" aria-pressed="${j.pick === i && S.draft.category === k.category}">${esc(k.name)}</button>`).join("")}</div>
+    <p class="mute" style="margin:8px 0 0">${sure ? "" : "Not sure. Tap the right one. "}Filled in from the photo. Change anything that is wrong.</p></div>`;
+}
+function bindDetect() {
+  const go = $("#det-go");
+  if (go) go.onclick = () => { pref.set("detect", true); detectDraft(); };
+  const re = $("#det-retry");
+  if (re) re.onclick = () => { S.det = null; detectDraft(); };
+  document.querySelectorAll("[data-kind]").forEach((b) => b.onclick = () => {
+    const j = S.det; j.pick = +b.dataset.kind;
+    applyDetect(S.draft, j.r.kinds[j.pick], j.r, true);
+    refreshAdd();
+  });
 }
 
 // Search online ---------------------------------------------------------------
@@ -1074,22 +1154,26 @@ function viewBatch() {
   const left = B.rows.filter((r) => !r.saved);
   const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
   $("#top").innerHTML = `<div class="top-row"><a class="back label" href="#add" style="text-decoration:none">Close</a><span class="label title grow">Batch add</span><span class="mute gut" style="font-size:11px">${B.rows.length ? plural(left.length, "piece") : ""}</span></div>`;
-  const catOf = (r) => r.category || B.category;
-  const ready = left.length && left.every(catOf) && !B.busy;
-  const opts = (v) => `<option value="">${B.category ? "Same as all (" + esc(catLabel(B.category)) + ")" : "Choose category"}</option>` + CATEGORIES.map(([id, l]) => `<option value="${id}" ${v === id ? "selected" : ""}>${esc(l)}</option>`).join("");
+  const ready = left.length && left.every((r) => batchCat(B, r)) && !B.busy;
+  const first = (r) => (B.category ? "Same as all (" + esc(catLabel(B.category)) + ")" : r.auto ? esc(catLabel(r.auto.category)) + " (detected)" : "Choose category");
+  const opts = (r) => `<option value="">${first(r)}</option>` + CATEGORIES.map(([id, l]) => `<option value="${id}" ${r.category === id ? "selected" : ""}>${esc(l)}</option>`).join("");
   const lock = (r) => (r.saved || B.busy ? "disabled" : "");
+  const state = (r) => r.saved ? "" : r.det === "download" ? `Downloading detector ${Math.round((B.dl || 0) * 100)}%` : r.det === "work" ? "Detecting"
+    : r.det === "error" ? "Not detected" : r.auto && r.auto.p < 0.5 ? "Best guess" : "";
   $("#main").innerHTML = `<div class="form-wrap">
     ${B.rows.length ? "" : `<button class="pick" id="pick"><span class="label">Choose photos</span><span class="mute">Pick as many as you like. Each photo becomes its own piece.</span></button>`}
+    ${B.rows.length && !detectOn() ? `<button type="button" class="batch-link" id="det-go-b"><span class="label">Detect from photos</span><br><span class="mute">Fills in each piece's category and name. Downloads ${Detect.MB} MB once. Photos stay on this phone.</span></button>` : ""}
     <input type="file" id="bfile" accept="image/*" multiple hidden>
     <div class="row"><span class="label">Category for all</span><div class="chips">${CATEGORIES.map(([id, l]) => `<button type="button" class="chip" data-bcat="${id}" aria-pressed="${B.category === id}" ${B.busy ? "disabled" : ""}>${esc(l)}</button>`).join("")}</div></div>
     <div class="row"><span class="label">Brand for all</span><input class="field" id="b-brand" value="${esc(B.brand)}" placeholder="Optional" autocomplete="off" ${B.busy ? "disabled" : ""}></div>
     ${B.rows.map((r, i) => `<div class="brow${r.saved ? " saved" : ""}">
       <div class="shot"><img src="${r.url}" alt=""></div>
-      <div><input class="field" data-bname="${i}" value="${esc(r.name)}" placeholder="Name (optional)" autocomplete="off" ${lock(r)}>
-        <select class="field" data-bc="${i}" aria-label="Category for photo ${i + 1}" ${lock(r)}>${opts(r.category)}</select></div>
+      <div><input class="field" id="b-name-${i}" data-bname="${i}" value="${esc(r.nameSet || !r.auto ? r.name : r.auto.name)}" placeholder="Name (optional)" autocomplete="off" ${lock(r)}>
+        <select class="field" data-bc="${i}" aria-label="Category for photo ${i + 1}" ${lock(r)}>${opts(r)}</select>
+        ${state(r) ? `<div class="mute" style="font-size:12px;margin-top:6px">${state(r)}</div>` : ""}</div>
       ${r.saved ? `<span class="label mute">Saved</span>` : `<button class="x" data-brm="${i}" aria-label="Remove photo ${i + 1}" ${B.busy ? "disabled" : ""}>×</button>`}
     </div>`).join("")}
-    ${B.rows.length ? `<p class="mute gut" style="margin:12px 0">Empty names become the category and a number. Colour is taken from each photo. Add size and the rest later from each piece.</p>` : ""}
+    ${B.rows.length ? `<p class="mute gut" style="margin:12px 0">${detectOn() ? "Names and categories are detected from each photo. Change any that are wrong." : "Empty names become the category and a number."} Colour is taken from each photo. Add size and the rest later from each piece.</p>` : ""}
     ${B.err ? `<div class="err">${esc(B.err)}</div>` : ""}
     <div class="actions"><button class="label" id="b-more" ${B.busy ? "disabled" : ""}>+ Photos</button><button class="label solid" id="b-save" ${ready ? "" : "disabled"}>${B.busy ? `Saving ${Math.min(B.done + 1, B.total)} of ${B.total}` : left.length ? `Save ${plural(left.length, "piece")}` : "Save"}</button></div>
   </div>`;
@@ -1100,27 +1184,57 @@ function viewBatch() {
   file.onchange = () => { for (const f of file.files) B.rows.push({ file: f, url: URL.createObjectURL(f), name: "", category: "" }); file.value = ""; B.err = ""; viewBatch(); };
   document.querySelectorAll("[data-bcat]").forEach((b) => b.onclick = () => { B.category = B.category === b.dataset.bcat ? "" : b.dataset.bcat; viewBatch(); });
   $("#b-brand").oninput = (e) => (B.brand = e.target.value);
-  document.querySelectorAll("[data-bname]").forEach((i) => i.oninput = () => (B.rows[+i.dataset.bname].name = i.value));
+  document.querySelectorAll("[data-bname]").forEach((i) => i.oninput = () => { const r = B.rows[+i.dataset.bname]; r.name = i.value; r.nameSet = true; });
   document.querySelectorAll("[data-bc]").forEach((sel) => sel.onchange = () => { B.rows[+sel.dataset.bc].category = sel.value; viewBatch(); });
   document.querySelectorAll("[data-brm]").forEach((b) => b.onclick = () => { const r = B.rows.splice(+b.dataset.brm, 1)[0]; URL.revokeObjectURL(r.url); viewBatch(); });
   $("#b-save").onclick = saveBatch;
+  const go = $("#det-go-b");
+  if (go) go.onclick = () => { pref.set("detect", true); viewBatch(); };
+  detectBatch();
+}
+// The person's own choice for this photo, then "Category for all", then detection.
+const batchCat = (B, r) => r.category || B.category || (r.auto ? r.auto.category : "");
+// Detect the batch's photos one at a time, in the order they were added.
+let batchDetecting = false;
+async function detectBatch() {
+  if (batchDetecting || !detectOn()) return;
+  batchDetecting = true;
+  const paint = () => { if (route().v === "batch" && S.batch && !S.batch.busy) keepFocus(viewBatch); };
+  try {
+    for (;;) {
+      const B = S.batch, r = B && B.rows.find((x) => !x.saved && !x.det);
+      if (!r) break;
+      r.det = "work"; paint();
+      try {
+        const res = await Detect.run(r.file, (st, p = 0) => {
+          if (st === r.det && Math.round(p * 100) === Math.round((B.dl || 0) * 100)) return;
+          r.det = st; B.dl = p; paint();
+        });
+        const k = res.kinds[0];
+        r.auto = { category: k.category, layer: k.layer, name: detName(k, res.color), pattern: res.pattern.p >= PATTERN_SURE ? res.pattern.id : "", p: k.p };
+        r.det = "done";
+      } catch { r.det = "error"; }
+      paint();
+    }
+  } finally { batchDetecting = false; }
 }
 async function saveBatch() {
   const B = S.batch;
   if (!B || B.busy) return;
   const todo = B.rows.filter((r) => !r.saved);
-  if (!todo.length || !todo.every((r) => r.category || B.category)) return;
+  if (!todo.length || !todo.every((r) => batchCat(B, r))) return;
   B.busy = true; B.err = ""; B.done = 0; B.total = todo.length; viewBatch();
   // Number unnamed pieces after what is already in the wardrobe: "Shoes 3", "Shoes 4".
   const count = {};
   for (const g of S.items) if (!g.deleted) count[g.category] = (count[g.category] || 0) + 1;
   let lastErr = "";
   await Undo.act("Batch add", async () => { for (const r of todo) {
-    const cat = r.category || B.category;
+    const cat = batchCat(B, r), a = r.auto;
     try {
       const images = await uploadPhotos([r.file], "front");
-      const name = r.name.trim() || `${catLabel(cat)} ${(count[cat] || 0) + 1}`;
-      const rec = cleanRecord({ name, category: cat, brand: B.brand, status: "owned" });
+      const name = (r.nameSet || !a ? r.name : a.name).trim() || `${catLabel(cat)} ${(count[cat] || 0) + 1}`;
+      // The detected layer only fits the detected category.
+      const rec = cleanRecord({ name, category: cat, brand: B.brand, status: "owned", pattern: a && a.pattern, layer: a && a.category === cat ? a.layer : "" });
       if (images[0]) { rec.color = images[0].color; rec.colorFamily = family(rec.color); }
       const now = Date.now();
       await S.db.collection("garments").doc(newId()).set({ ...rec, images, fav: false, deleted: false, createdAt: now, updatedAt: now });
@@ -1877,25 +1991,20 @@ function registerUpdater() {
   }).catch(() => {});
 }
 
-// ---------- Studio photos ----------
-// Cuts the garment out on this device with U-2-Netp (a small open model, 4.6 MB,
-// Apache 2.0, served from models/ and kept in the browser cache), then centres it
-// on a transparent 4:5 canvas with a soft shadow. The grey well behind every
-// photo shows through, so studio shots line up like a shop's product pages.
-// Nothing leaves the phone, and the original photo is always kept.
-const Studio = (() => {
+// ---------- Models on this device ----------
+// Studio and Detect run small open models in the browser with onnxruntime.
+// A model file is downloaded once and kept in its own browser cache.
+const OnDevice = (() => {
   const ORT = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/";
-  const MODEL = "models/u2netp.onnx", CACHE = "studio-model-u2netp-1";
-  const N = 320, OUT_W = 1200, OUT_H = 1500;
-  let sessP = null;
-  async function modelBytes(onProgress) {
+  let ortP = null;
+  async function bytes(url, cacheName, size, onProgress) {
     let cache = null;
-    try { cache = await caches.open(CACHE); } catch {}
-    const hit = cache && (await cache.match(MODEL));
+    try { cache = await caches.open(cacheName); } catch {}
+    const hit = cache && (await cache.match(url));
     if (hit) return hit.arrayBuffer();
-    const r = await fetch(MODEL);
+    const r = await fetch(url);
     if (!r.ok || !r.body) throw new Error("model");
-    const total = +r.headers.get("content-length") || 4.6e6, reader = r.body.getReader(), parts = [];
+    const total = +r.headers.get("content-length") || size, reader = r.body.getReader(), parts = [];
     let got = 0;
     for (;;) {
       const { done, value } = await reader.read();
@@ -1904,29 +2013,51 @@ const Studio = (() => {
       if (onProgress) onProgress(Math.min(1, got / total));
     }
     const blob = new Blob(parts);
-    if (cache) await cache.put(MODEL, new Response(blob)).catch(() => {});
+    if (cache) await cache.put(url, new Response(blob)).catch(() => {});
     return blob.arrayBuffer();
   }
+  function ort() {
+    return ortP || (ortP = (async () => {
+      const o = await import(ORT + "ort.wasm.min.mjs");
+      o.env.wasm.wasmPaths = ORT;
+      // Run models in a worker so the app stays responsive while they work.
+      o.env.wasm.proxy = true;
+      return o;
+    })().catch((e) => { ortP = null; throw e; }));
+  }
+  async function session(url, cacheName, size, onProgress) {
+    const o = await ort();
+    const s = await o.InferenceSession.create(await bytes(url, cacheName, size, onProgress), { executionProviders: ["wasm"] });
+    return { ort: o, s };
+  }
+  // A photo as something a canvas can draw, upright.
+  async function source(blob) {
+    const bmp = await createImageBitmap(blob, { imageOrientation: "from-image" }).catch(() => null);
+    if (bmp) return bmp;
+    return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("unreadable")); i.src = URL.createObjectURL(blob); });
+  }
+  return { bytes, session, source };
+})();
+
+// ---------- Studio photos ----------
+// Cuts the garment out on this device with U-2-Netp (a small open model, 4.6 MB,
+// Apache 2.0, served from models/ and kept in the browser cache), then centres it
+// on a transparent 4:5 canvas with a soft shadow. The grey well behind every
+// photo shows through, so studio shots line up like a shop's product pages.
+// Nothing leaves the phone, and the original photo is always kept.
+const Studio = (() => {
+  const MODEL = "models/u2netp.onnx", CACHE = "studio-model-u2netp-1";
+  const N = 320, OUT_W = 1200, OUT_H = 1500;
+  let sessP = null;
   function session(onProgress) {
-    return sessP || (sessP = (async () => {
-      const ort = await import(ORT + "ort.wasm.min.mjs");
-      ort.env.wasm.wasmPaths = ORT;
-      // Run the model in a worker so the app stays responsive while it works.
-      ort.env.wasm.proxy = true;
-      const s = await ort.InferenceSession.create(await modelBytes(onProgress), { executionProviders: ["wasm"] });
-      return { ort, s };
-    })().catch((e) => { sessP = null; throw e; }));
+    return sessP || (sessP = OnDevice.session(MODEL, CACHE, 4.6e6, onProgress).catch((e) => { sessP = null; throw e; }));
   }
   const canvas = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
   const encode = async (c) => {
     const b = await new Promise((r) => c.toBlob(r, "image/webp", 0.88));
     return b && b.type === "image/webp" ? b : new Promise((r) => c.toBlob(r, "image/png")); // PNG keeps transparency on Safari
   };
-  async function source(blob) {
-    const bmp = await createImageBitmap(blob, { imageOrientation: "from-image" }).catch(() => null);
-    if (bmp) return bmp;
-    return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("unreadable")); i.src = URL.createObjectURL(blob); });
-  }
+  const source = OnDevice.source;
   // onStep("download", 0..1) while the model loads the first time, then onStep("work").
   async function make(blob, onStep = () => {}) {
     const { ort, s } = await session((p) => onStep("download", p));
@@ -1978,6 +2109,67 @@ const Studio = (() => {
     return { full: await encode(o), thumb: await encode(t), w: OUT_W, h: OUT_H };
   }
   return { make };
+})();
+
+// ---------- Detect from photo ----------
+// Guesses what a photo shows: the kind of piece (with its category and layer)
+// and the pattern. Uses Marqo-FashionSigLIP, an open fashion image model
+// (Apache 2.0), on this device. Its text half was run once ahead of time over a
+// fixed list of kinds and patterns (models/detect-labels.json), so the phone only
+// runs the image half: one download, kept in the browser cache. Photos never
+// leave the phone.
+const Detect = (() => {
+  // FORMAT matches "format" inside detect-labels.json. Raise both when the file
+  // changes: the cache key changes with it, and an older copy of the app that
+  // meets a newer file reports an error instead of guessing from data it misreads.
+  const MODEL = "models/fashion-siglip-vision.onnx", FORMAT = 2, LABELS = "models/detect-labels.json?" + FORMAT, CACHE = "detect-model-1";
+  const MB = 61, N = 224;
+  let sessP = null, labP = null;
+  function session(onProgress) {
+    return sessP || (sessP = OnDevice.session(MODEL, CACHE, MB * 1e6, onProgress).catch((e) => { sessP = null; throw e; }));
+  }
+  function labels() {
+    return labP || (labP = (async () => {
+      const j = JSON.parse(new TextDecoder().decode(await OnDevice.bytes(LABELS, CACHE, 1.3e5)));
+      if (j.format !== FORMAT) throw new Error("labels");
+      const raw = Uint8Array.from(atob(j.data), (c) => c.charCodeAt(0)), q = new Int16Array(raw.buffer), D = j.dim;
+      const vec = (i) => Float32Array.from(q.subarray(i * D, (i + 1) * D), (x) => x * j.scale[i]);
+      return {
+        kinds: j.kinds.map(([category, name, layer], i) => ({ category, name, layer, v: vec(i) })),
+        patterns: j.patterns.map((id, i) => ({ id, v: vec(j.kinds.length + i) })),
+      };
+    })().catch((e) => { labP = null; throw e; }));
+  }
+  // Probabilities in the model's own scale (logit scale 100), best first.
+  function rank(e, list) {
+    const z = list.map((x) => { let s = 0; for (let i = 0; i < e.length; i++) s += e[i] * x.v[i]; return 100 * s; });
+    const m = Math.max(...z), ex = z.map((v) => Math.exp(v - m)), sum = ex.reduce((a, b) => a + b, 0);
+    return list.map((x, i) => ({ ...x, v: undefined, p: ex[i] / sum })).sort((a, b) => b.p - a.p);
+  }
+  // onStep("download", 0..1) the first time, then onStep("work").
+  // Returns { kinds: best three, pattern, color }.
+  async function run(blob, onStep = () => {}) {
+    const [{ ort, s }, L] = await Promise.all([session((p) => onStep("download", p)), labels()]);
+    onStep("work");
+    const src = await OnDevice.source(blob);
+    // The model sees the whole photo squeezed to 224 x 224, as in its training.
+    // Halve in steps first so a big photo shrinks smoothly.
+    let w = src.width, h = src.height, cur = src;
+    while (w > N * 2 || h > N * 2) {
+      w = Math.max(N, w >> 1); h = Math.max(N, h >> 1);
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      const x = c.getContext("2d"); x.imageSmoothingQuality = "high"; x.drawImage(cur, 0, 0, w, h); cur = c;
+    }
+    const c = document.createElement("canvas"); c.width = N; c.height = N;
+    const x = c.getContext("2d", { willReadFrequently: true }); x.imageSmoothingQuality = "high"; x.drawImage(cur, 0, 0, N, N);
+    const px = x.getImageData(0, 0, N, N).data, P = N * N, input = new Float32Array(3 * P);
+    for (let i = 0, j = 0; i < px.length; i += 4, j++) { input[j] = px[i] / 127.5 - 1; input[j + P] = px[i + 1] / 127.5 - 1; input[j + 2 * P] = px[i + 2] / 127.5 - 1; }
+    const out = await s.run({ [s.inputNames[0]]: new ort.Tensor("float32", input, [1, 3, N, N]) });
+    const raw = (out.image_embeds || out[s.outputNames[0]]).data;
+    const n = Math.hypot(...raw), e = Float32Array.from(raw, (v) => v / n);
+    return { kinds: rank(e, L.kinds).slice(0, 3), pattern: rank(e, L.patterns)[0], color: photoColour(src) };
+  }
+  return { run, MB };
 })();
 
 // ---------- Studio by default ----------
