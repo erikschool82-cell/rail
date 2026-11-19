@@ -163,7 +163,7 @@ textarea.field { min-height: 72px; resize: vertical; }
 .dots span { flex: 1; height: 3px; background: var(--paper); }
 .dots span.on { background: var(--ink); }
 .photobar { display: flex; height: 44px; border-bottom: 1px solid var(--line); overflow-x: auto; }
-.photobar > * { display: flex; align-items: center; padding: 0 14px; white-space: nowrap; border-right: 1px solid var(--line); }
+.photobar > * { display: flex; align-items: center; padding: 0 10px; white-space: nowrap; border-right: 1px solid var(--line); }
 .photobar > *:last-child { border-right: 0; }
 .head { padding: 18px 16px; border-bottom: 1px solid var(--line); }
 .head h1 { margin: 2px 0 0; font-size: 22px; line-height: 27px; font-weight: 400; text-wrap: balance; }
@@ -366,7 +366,7 @@ function family(hex) {
 
 // ---------- Version ----------
 // Raised together with VERSION in sw.js on every release.
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.4.0";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 function applyUpdate() {
@@ -527,7 +527,10 @@ function caption(g) {
   const sz = S.showSize && g.size ? `<span class="mute" style="float:right;font-size:11px">${esc(g.size)}</span>` : "";
   return `<div class="cap">${sz}${b}<div class="n">${esc(g.name)}</div></div>`;
 }
+// A photo shows its studio version when one exists and is switched on.
+const shown = (img) => (img && img.useStudio && img.studio ? img.studio : img);
 function photo(img, ratio, useFull) {
+  img = shown(img);
   const r = ratio || (img ? img.w / img.h : 0.8);
   if (!img) return `<div class="well" style="aspect-ratio:${r}"><div class="none label mute">No photo</div></div>`;
   return `<div class="well" style="aspect-ratio:${r}"><img alt="" loading="lazy" decoding="async" src="${blobUrl(useFull ? img.id : img.thumb || img.id)}"></div>`;
@@ -868,6 +871,7 @@ function viewItem({ id }) {
       ${S.canWrite ? `<div class="photobar">
         <span class="label mute">${cur ? esc(cur.kind) : "No photo"}</span>
         ${cur && S.slide > 0 ? `<button class="label" id="cover">Make cover</button>` : ""}
+        ${cur && S.assets ? `<button class="label" id="studio" aria-pressed="${!!cur.useStudio}">${cur.useStudio ? "Original" : "Studio"}</button>` : ""}
         ${cur ? `<button class="label" id="rmimg">Remove</button>` : ""}
         ${S.assets ? `<label class="label" style="gap:6px">As <select id="kind" class="label" aria-label="Photo type">${KINDS.map((k) => `<option ${k === "back" ? "selected" : ""}>${k}</option>`).join("")}</select></label><button class="label" id="addimg">+ Photo</button>` : ""}
       </div><input type="file" id="file2" accept="image/*" multiple hidden>` : ""}
@@ -905,6 +909,24 @@ function viewItem({ id }) {
     S.busy = false; render();
   };
   $("#fav").onclick = () => save({ fav: !g.fav }, g.fav ? "Removed from favourites" : "Added to favourites");
+  $("#studio")?.addEventListener("click", async (e) => {
+    const b = e.currentTarget, i = Math.min(S.slide, imgs.length - 1), im = imgs[i];
+    const setImg = (patch) => (byId(g.id).images || []).map((x, j) => (j === i ? { ...x, ...patch } : x));
+    if (im.studio) return save({ images: setImg({ useStudio: !im.useStudio }) }, im.useStudio ? "Showing the original" : "Showing the studio photo");
+    if (S.studioBusy) return;
+    S.studioBusy = true; b.disabled = true; b.textContent = "Preparing";
+    try {
+      const src = await (await fetch(blobUrl(im.id))).blob();
+      const out = await Studio.make(src, (step, p) => { b.textContent = step === "download" ? `Loading ${Math.round(p * 100)}%` : "Cutting out"; });
+      const a = await S.assets.upload(out.full), t = await S.assets.upload(out.thumb);
+      S.studioBusy = false;
+      await save({ images: setImg({ studio: { id: a.id, thumb: t.id, w: out.w, h: out.h }, useStudio: true }) }, "Studio photo ready");
+    } catch (err) {
+      S.studioBusy = false;
+      toast(err && err.message === "nothing found" ? "No garment found in this photo" : "Studio needs a connection the first time. Try again.");
+      render();
+    }
+  });
   const startEdit = () => { S.edit = { ...g, formality: g.formality ? String(g.formality) : "", price: g.price != null ? String(g.price) : "" }; render(); };
   $("#edit").onclick = () => { if (S.edit) { S.edit = null; render(); } else startEdit(); };
   $("#complete")?.addEventListener("click", startEdit);
@@ -1074,7 +1096,7 @@ async function backup() {
   const b = $("#backup"); b.disabled = true; b.textContent = "Preparing backup";
   try {
     const garments = Object.fromEntries(await Local.entries("garments"));
-    const used = new Set(Object.values(garments).flatMap((g) => (g.images || []).flatMap((i) => [i.id, i.thumb])));
+    const used = new Set(Object.values(garments).flatMap((g) => (g.images || []).flatMap((i) => [i.id, i.thumb, i.studio && i.studio.id, i.studio && i.studio.thumb].filter(Boolean))));
     const photos = {};
     for (const [id, blob] of await Local.entries("blobs")) if (used.has(id)) photos[id] = await toDataUrl(blob);
     const name = "rail-backup-" + new Date().toISOString().slice(0, 10) + ".json";
@@ -1133,6 +1155,107 @@ function registerUpdater() {
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
   }).catch(() => {});
 }
+
+// ---------- Studio photos ----------
+// Cuts the garment out on this device with U-2-Netp (a small open model, 4.6 MB,
+// Apache 2.0, served from models/ and kept in the browser cache), then centres it
+// on a transparent 4:5 canvas with a soft shadow. The grey well behind every
+// photo shows through, so studio shots line up like a shop's product pages.
+// Nothing leaves the phone, and the original photo is always kept.
+const Studio = (() => {
+  const ORT = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/";
+  const MODEL = "models/u2netp.onnx", CACHE = "studio-model-u2netp-1";
+  const N = 320, OUT_W = 1200, OUT_H = 1500;
+  let sessP = null;
+  async function modelBytes(onProgress) {
+    let cache = null;
+    try { cache = await caches.open(CACHE); } catch {}
+    const hit = cache && (await cache.match(MODEL));
+    if (hit) return hit.arrayBuffer();
+    const r = await fetch(MODEL);
+    if (!r.ok || !r.body) throw new Error("model");
+    const total = +r.headers.get("content-length") || 4.6e6, reader = r.body.getReader(), parts = [];
+    let got = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value); got += value.length;
+      if (onProgress) onProgress(Math.min(1, got / total));
+    }
+    const blob = new Blob(parts);
+    if (cache) await cache.put(MODEL, new Response(blob)).catch(() => {});
+    return blob.arrayBuffer();
+  }
+  function session(onProgress) {
+    return sessP || (sessP = (async () => {
+      const ort = await import(ORT + "ort.wasm.min.mjs");
+      ort.env.wasm.wasmPaths = ORT;
+      const s = await ort.InferenceSession.create(await modelBytes(onProgress), { executionProviders: ["wasm"] });
+      return { ort, s };
+    })().catch((e) => { sessP = null; throw e; }));
+  }
+  const canvas = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+  const encode = async (c) => {
+    const b = await new Promise((r) => c.toBlob(r, "image/webp", 0.88));
+    return b && b.type === "image/webp" ? b : new Promise((r) => c.toBlob(r, "image/png")); // PNG keeps transparency on Safari
+  };
+  async function source(blob) {
+    const bmp = await createImageBitmap(blob, { imageOrientation: "from-image" }).catch(() => null);
+    if (bmp) return bmp;
+    return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("unreadable")); i.src = URL.createObjectURL(blob); });
+  }
+  // onStep("download", 0..1) while the model loads the first time, then onStep("work").
+  async function make(blob, onStep = () => {}) {
+    const { ort, s } = await session((p) => onStep("download", p));
+    onStep("work");
+    await new Promise((r) => setTimeout(r, 30)); // let the label paint before the busy part
+    const src = await source(blob);
+    // 1. Mask at the model's 320 x 320
+    const m = canvas(N, N), mx = m.getContext("2d", { willReadFrequently: true });
+    mx.drawImage(src, 0, 0, N, N);
+    const px = mx.getImageData(0, 0, N, N).data, input = new Float32Array(3 * N * N), P = N * N;
+    for (let i = 0, j = 0; i < px.length; i += 4, j++) {
+      input[j] = (px[i] / 255 - 0.485) / 0.229; input[j + P] = (px[i + 1] / 255 - 0.456) / 0.224; input[j + 2 * P] = (px[i + 2] / 255 - 0.406) / 0.225;
+    }
+    const out = await s.run({ [s.inputNames[0]]: new ort.Tensor("float32", input, [1, 3, N, N]) });
+    const v = out[s.outputNames[0]].data;
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < v.length; i++) { if (v[i] < lo) lo = v[i]; if (v[i] > hi) hi = v[i]; }
+    const md = mx.createImageData(N, N), range = hi - lo || 1;
+    for (let i = 0; i < v.length; i++) {
+      // Firm up the edge: values near 0 or 1 snap to clear or solid.
+      md.data[i * 4 + 3] = Math.round(255 * Math.max(0, Math.min(1, ((v[i] - lo) / range - 0.1) / 0.8)));
+    }
+    mx.putImageData(md, 0, 0);
+    // 2. Apply the mask to the photo (at most 1600 px on the long side)
+    const sc = Math.min(1, 1600 / Math.max(src.width, src.height));
+    const W = Math.round(src.width * sc), H = Math.round(src.height * sc);
+    const p = canvas(W, H), pc = p.getContext("2d", { willReadFrequently: true });
+    pc.imageSmoothingQuality = "high";
+    pc.drawImage(m, 0, 0, W, H);
+    pc.globalCompositeOperation = "source-in";
+    pc.drawImage(src, 0, 0, W, H);
+    pc.globalCompositeOperation = "source-over";
+    // 3. Bounding box of the garment
+    const a = pc.getImageData(0, 0, W, H).data;
+    let x0 = W, y0 = H, x1 = -1, y1 = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (a[(y * W + x) * 4 + 3] > 96) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0 || (x1 - x0) * (y1 - y0) < W * H * 0.01) throw new Error("nothing found");
+    const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+    // 4. Centre on the 4:5 canvas with a soft shadow
+    const k = Math.min((OUT_W * 0.82) / bw, (OUT_H * 0.84) / bh);
+    const dw = Math.round(bw * k), dh = Math.round(bh * k), dx = Math.round((OUT_W - dw) / 2), dy = Math.round((OUT_H - dh) / 2);
+    const o = canvas(OUT_W, OUT_H), ox = o.getContext("2d");
+    ox.imageSmoothingQuality = "high";
+    ox.shadowColor = "rgba(0,0,0,0.20)"; ox.shadowBlur = 36; ox.shadowOffsetY = 16;
+    ox.drawImage(p, x0, y0, bw, bh, dx, dy, dw, dh);
+    const t = canvas(480, 600), tx = t.getContext("2d");
+    tx.imageSmoothingQuality = "high";
+    tx.drawImage(o, 0, 0, 480, 600);
+    return { full: await encode(o), thumb: await encode(t), w: OUT_W, h: OUT_H };
+  }
+  return { make };
+})();
 
 // Fade photos in once loaded; mark ones that fail instead of showing a broken icon.
 document.addEventListener("load", (e) => { if (e.target.tagName === "IMG" && e.target.closest(".well")) e.target.classList.add("on"); }, true);
