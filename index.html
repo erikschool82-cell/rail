@@ -1458,11 +1458,6 @@ const Studio = (() => {
 // pieces first. The original is kept; the piece view switches back in one tap.
 const StudioQ = { busy: false, manual: false, current: null, skip: new Set() };
 const needsStudio = (im) => im && !im.studio && !im.studioNone && !StudioQ.skip.has(im.id);
-function studioButton(im) {
-  if (im.studio) return `<button class="label" id="studio">${studioOn(im) ? "Original" : "Studio"}</button>`;
-  if (needsStudio(im)) return `<span class="label mute">Making studio</span>`;
-  return `<button class="label" id="studio">Studio</button>`;
-}
 async function makeStudio(gid, imgId, onStep) {
   const src = await (await fetch(blobUrl(imgId))).blob();
   let out;
