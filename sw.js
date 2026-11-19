@@ -1,7 +1,7 @@
 // RAIL app updater. Raise VERSION on every release: the browser sees a
 // changed file, installs the new version in the background, and the page
 // shows "A new version is ready" until the person taps Update.
-const VERSION = "1.5.0";
+const VERSION = "1.5.1";
 const CACHE = "rail-" + VERSION;
 const CORE = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 

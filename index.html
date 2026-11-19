@@ -391,7 +391,7 @@ function family(hex) {
 
 // ---------- Version ----------
 // Raised together with VERSION in sw.js on every release.
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.5.1";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 function applyUpdate() {
@@ -430,7 +430,7 @@ function toast(msg, withUndo) {
 // round arrow puts the last action back. Photos are never erased from the
 // device, so a removed photo comes back with its piece. Kept across restarts.
 const Undo = (() => {
-  let stack = pref.get("undo", []), open = null, quiet = false, busy = false;
+  let stack = pref.get("undo", []), open = null, busy = false;
   const keep = () => { stack = stack.slice(-30); pref.set("undo", stack); paint(); };
   function paint() {
     const b = $("#undo"); if (!b) return;
@@ -440,7 +440,6 @@ const Undo = (() => {
     b.setAttribute("aria-label", b.title);
   }
   function note(id, before) {
-    if (quiet) return;
     if (open) { if (!open.changes.some((c) => c.id === id)) open.changes.push({ id, before }); return; }
     stack.push({ label: "Last change", changes: [{ id, before }] }); keep();
   }
@@ -452,20 +451,18 @@ const Undo = (() => {
   }
   async function undo() {
     if (busy || !stack.length) return null;
-    const e = stack.pop(); busy = true; quiet = true; paint();
+    const e = stack.pop(); busy = true; paint();
     try {
       for (const c of [...e.changes].reverse()) {
         const ref = S.db.collection("garments").doc(c.id);
-        if (c.before) await ref.set(c.before);
-        else await ref.update({ deleted: true, deletedAt: Date.now() }).catch(() => {});
+        if (c.before) await ref.set(c.before, { quiet: true });
+        else await ref.update({ deleted: true, deletedAt: Date.now() }, { quiet: true }).catch(() => {});
       }
     } catch (err) { stack.push(e); throw err; }
-    finally { busy = false; quiet = false; keep(); }
+    finally { busy = false; keep(); }
     return e;
   }
-  // Background work (automatic studio photos) is not the person's action: not recorded.
-  async function quiet_(fn) { const q = quiet; quiet = true; try { return await fn(); } finally { quiet = q; } }
-  return { note, act, undo, paint, quiet: quiet_ };
+  return { note, act, undo, paint };
 })();
 async function doUndo() {
   if (!S.db) return;
@@ -1236,11 +1233,12 @@ const Local = (() => {
   const ref = (id) => ({
     id,
     async get() { return { id, exists: items.has(id), data: () => items.get(id) }; },
-    async set(v) { const c = clone(v), was = before(id); await run("garments", "readwrite", (s) => s.put(c, id)); items.set(id, c); Undo.note(id, was); persist(); emit(); },
-    async update(p) {
+    // { quiet: true } keeps a write out of the undo history (background work, undo itself).
+    async set(v, o = {}) { const c = clone(v), was = before(id); await run("garments", "readwrite", (s) => s.put(c, id)); items.set(id, c); if (!o.quiet) Undo.note(id, was); persist(); emit(); },
+    async update(p, o = {}) {
       if (!items.has(id)) throw { code: "invalid_argument" };
       const was = before(id), c = { ...items.get(id), ...clone(p) };
-      await run("garments", "readwrite", (s) => s.put(c, id)); items.set(id, c); Undo.note(id, was); emit();
+      await run("garments", "readwrite", (s) => s.put(c, id)); items.set(id, c); if (!o.quiet) Undo.note(id, was); emit();
     },
   });
   const db = {
@@ -1466,7 +1464,7 @@ async function makeStudio(gid, imgId, onStep) {
     // Nothing recognisable in the photo: remember, so it is not tried again on every start.
     if (e && e.message === "nothing found") {
       const g = byId(gid);
-      if (g) await Undo.quiet(() => S.db.collection("garments").doc(gid).update({ images: g.images.map((x) => (x.id === imgId ? { ...x, studioNone: true } : x)) }));
+      if (g) await S.db.collection("garments").doc(gid).update({ images: g.images.map((x) => (x.id === imgId ? { ...x, studioNone: true } : x)) }, { quiet: true });
     }
     throw e;
   }
@@ -1474,7 +1472,8 @@ async function makeStudio(gid, imgId, onStep) {
   const g = byId(gid);
   if (!g) return;
   const images = (g.images || []).map((x) => (x.id === imgId ? { ...x, studio: { id: a.id, thumb: t.id, w: out.w, h: out.h }, studioNone: false } : x));
-  await Undo.quiet(() => S.db.collection("garments").doc(gid).update({ images }));
+  // Background work, not the person's action: kept out of the undo history.
+  await S.db.collection("garments").doc(gid).update({ images }, { quiet: true });
 }
 async function runStudioQueue() {
   if (StudioQ.busy || StudioQ.manual || !S.db || !S.assets) return;
