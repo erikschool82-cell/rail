@@ -14,6 +14,16 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0b0b0b" media="(prefers-color-scheme: dark)">
+<script>
+// Appearance from Settings: "light" or "dark" fixes it, anything else follows the phone.
+function applyTheme(t) {
+  const fixed = t === "light" || t === "dark";
+  if (fixed) document.documentElement.setAttribute("data-theme", t); else document.documentElement.removeAttribute("data-theme");
+  // The phone's status bar colour follows too.
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m, i) => (m.content = fixed ? (t === "dark" ? "#0b0b0b" : "#ffffff") : i ? "#0b0b0b" : "#ffffff"));
+}
+try { applyTheme(JSON.parse(localStorage.getItem("rail.theme"))); } catch {}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500&display=swap">
 <style>
@@ -628,7 +638,7 @@ const Outfit = (() => {
 
 // ---------- Version ----------
 // Raised together with VERSION in sw.js on every release.
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.7.0";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 function applyUpdate() {
@@ -769,7 +779,7 @@ const byId = (id) => live().find((g) => g.id === id);
 function route() {
   const h = location.hash.slice(1) || "wardrobe";
   if (h.startsWith("item-")) return { v: "item", id: h.slice(5) };
-  return { v: ["wardrobe", "add", "batch", "lists", "boards", "outfits", "profile"].includes(h) ? h : "wardrobe" };
+  return { v: ["wardrobe", "add", "batch", "lists", "boards", "outfits", "profile", "settings"].includes(h) ? h : "wardrobe" };
 }
 window.addEventListener("hashchange", () => { S.edit = null; S.confirmDel = false; S.sheet = null; S.fit.sheet = null; S.slide = 0; S.err = ""; if (route().v === "add" && !S.draft) newDraft(); if (route().v !== "batch" && S.batch && !S.batch.busy) clearBatch(); render(); window.scrollTo(0, 0); });
 function newDraft(keep) { S.draft = { status: "owned", ...(keep || {}) }; S.files.forEach((f) => URL.revokeObjectURL(f.url)); S.files = []; S.more = false; S.err = ""; }
@@ -778,11 +788,11 @@ function newDraft(keep) { S.draft = { status: "owned", ...(keep || {}) }; S.file
 function render() {
   const r = route();
   document.querySelectorAll("#nav a").forEach((a) => {
-    const on = a.dataset.v === r.v || (a.dataset.v === "wardrobe" && (r.v === "item" || r.v === "add" || r.v === "batch"));
+    const on = a.dataset.v === r.v || (a.dataset.v === "wardrobe" && (r.v === "item" || r.v === "add" || r.v === "batch")) || (a.dataset.v === "profile" && r.v === "settings");
     a.toggleAttribute("aria-current", false); if (on) a.setAttribute("aria-current", "page");
   });
   $("#fab").hidden = !(r.v === "wardrobe") || !S.canWrite || !S.db;
-  const v = { wardrobe: viewWardrobe, add: viewAdd, batch: viewBatch, item: viewItem, profile: viewProfile, lists: viewSoon, boards: viewSoon, outfits: viewOutfits }[r.v];
+  const v = { wardrobe: viewWardrobe, add: viewAdd, batch: viewBatch, item: viewItem, profile: viewProfile, settings: viewSettings, lists: viewSoon, boards: viewSoon, outfits: viewOutfits }[r.v];
   v(r);
   renderLayer();
 }
@@ -1173,6 +1183,7 @@ const ICON = {
   more: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>`,
   prev: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>`,
   next: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>`,
+  cog: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
 };
 const fmtDate = (v) => { const d = new Date(v); return isNaN(d) ? String(v) : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); };
 const listText = (a) => (a || []).join(", ");
@@ -1381,7 +1392,7 @@ function renderItemSheet(L) {
 // Profile -------------------------------------------------------------------
 function viewProfile() {
   if (needStore()) return;
-  $("#top").innerHTML = `<div class="top-row"><span class="word">RAIL</span><span class="label title grow">Profile</span></div>`;
+  $("#top").innerHTML = `<div class="top-row"><span class="word">RAIL</span><span class="label title grow">Profile</span><a class="tbtn ico" href="#settings" aria-label="Settings" title="Settings" style="color:var(--ink)">${ICON.cog}</a></div>`;
   const all = live(), owned = all.filter((g) => (g.status || "owned") === "owned");
   const brands = new Set(owned.map((g) => (g.brand || "").toLowerCase()).filter(Boolean));
   const stats = [["Pieces", owned.length], ["Brands", brands.size], ["Favourites", owned.filter((g) => g.fav).length], ["Wishlist", all.filter((g) => g.status === "wishlist").length]];
@@ -1664,6 +1675,28 @@ function renderFitSheet(L) {
     $("#no-slot")?.addEventListener("click", () => { F.sheet = null; placeFit(null, slot); render(); });
   }
   $("#scrim").onclick = close; $("#done").onclick = close;
+}
+// Settings ------------------------------------------------------------------
+// Opened from the cog on Profile. Each choice applies at once and is kept on this device.
+function viewSettings() {
+  $("#top").innerHTML = `<div class="top-row"><a class="back label" href="#profile" style="text-decoration:none">Profile</a><span class="label title grow">Settings</span></div>`;
+  const theme = pref.get("theme", "system");
+  const chip = (on, attrs, body) => `<button class="chip" aria-pressed="${on}" ${attrs}>${body}</button>`;
+  $("#main").innerHTML = `<div class="form-wrap">
+    <div class="group"><span class="label">Appearance</span><div class="chips">
+      ${[["system", "System"], ["light", "Light"], ["dark", "Dark"]].map(([id, l]) => chip(theme === id, `data-theme-set="${id}"`, l)).join("")}</div>
+      <p class="mute" style="margin:10px 0 0">System follows your phone's light or dark setting.</p></div>
+    <div class="group"><span class="label">Wardrobe view</span><div class="chips">
+      ${chip(S.mode === "visual", `data-view="visual"`, "Visual")}${chip(S.mode === "archive", `data-view="archive"`, "Archive")}</div>
+      <p class="mute" style="margin:10px 0 0">Visual shows each photo at its own shape. Archive lines them up in an even grid.</p></div>
+    <div class="group"><span class="label">On each piece</span><div class="chips">
+      ${chip(S.showBrand, `id="set-brand"`, "Brand")}${chip(S.showSize, `id="set-size"`, "Size")}</div>
+      <p class="mute" style="margin:10px 0 0">What shows under each photo in your wardrobe.</p></div>
+  </div>`;
+  document.querySelectorAll("[data-theme-set]").forEach((b) => b.onclick = () => { pref.set("theme", b.dataset.themeSet); applyTheme(b.dataset.themeSet); viewSettings(); });
+  document.querySelectorAll("[data-view]").forEach((b) => b.onclick = () => { S.mode = b.dataset.view; pref.set("mode", S.mode); viewSettings(); });
+  $("#set-brand").onclick = () => { S.showBrand = !S.showBrand; pref.set("showBrand", S.showBrand); viewSettings(); };
+  $("#set-size").onclick = () => { S.showSize = !S.showSize; pref.set("showSize", S.showSize); viewSettings(); };
 }
 function viewSoon({ v }) {
   const copy = {
