@@ -226,6 +226,46 @@ textarea.field { min-height: 72px; resize: vertical; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--bar) + env(safe-area-inset-bottom, 0px) + 72px); z-index: 60;
   background: var(--ink); color: var(--paper); padding: 10px 14px; max-width: calc(100% - 32px); }
 
+/* Outfits: one grey well, the pieces laid out head to toe */
+.modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+.modes button { height: 44px; background: var(--paper); color: var(--mute); padding: 0 4px; font-size: 10px; letter-spacing: .05em; white-space: nowrap; }
+.modes button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.fit-ctx { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; text-align: left; border-bottom: 1px solid var(--line); }
+.fit-ctx .label { text-decoration: underline; text-underline-offset: 4px; }
+.fl { background: var(--well); padding: 16px 12px 20px; display: flex; flex-direction: column; align-items: center; border-bottom: 1px solid var(--line); }
+.tier { display: flex; justify-content: center; align-items: flex-end; gap: 2%; width: 100%; }
+.tier-2, .tier-3 { margin-top: -5%; }
+.pc { position: relative; aspect-ratio: 4 / 5; }
+.pc-img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pc-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.pc-img:active img { opacity: .8; }
+.pc-tools { position: absolute; top: 0; right: 0; display: flex; flex-direction: column; gap: 1px; }
+.pc-b { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--paper); color: var(--ink); }
+.pc-b[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.pc-tag { position: absolute; left: 0; bottom: 8%; background: var(--paper); padding: 2px 5px; }
+.pc-gap { display: flex; align-items: center; justify-content: center; text-align: center; padding: 10px; border: 1px solid var(--line); background: var(--paper); font-size: 12px; line-height: 16px; margin-top: 5%; }
+.fl-none { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.fit-adds { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 12px; }
+.why { margin: 12px 0 16px; font-size: 14px; line-height: 20px; min-height: 20px; }
+.err-t, .alert-t { color: var(--alert); }
+.fit-head { padding-block: 14px; border-bottom: 1px solid var(--line); }
+.srow { display: grid; grid-template-columns: minmax(0, 1fr) 48px; border-bottom: 1px solid var(--line); }
+.srow-main { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; padding: 12px 0 12px max(16px, env(safe-area-inset-left, 0px)); min-width: 0; }
+.sthumbs { display: flex; gap: 4px; margin-bottom: 2px; }
+.st { position: relative; width: 40px; aspect-ratio: 4 / 5; background: var(--well); overflow: hidden; }
+.st img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.st.dead { outline: 1px solid var(--alert); outline-offset: -1px; }
+.st.dead img { opacity: .3; }
+.stext { font-size: 14px; line-height: 20px; }
+.stext-2 { font-size: 12px; line-height: 16px; }
+.srow .x { width: 48px; height: 48px; font-size: 18px; color: var(--mute); align-self: center; }
+.tiles-head { padding-block: 14px 10px; }
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; padding: 0 16px 14px; }
+.tile { display: flex; flex-direction: column; gap: 5px; text-align: left; min-width: 0; }
+.tile .shot { width: 100%; }
+.tile-n { font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+a.opt { color: inherit; text-decoration: none; }
+
 /* Wider screens: rail on the left, more columns */
 @media (min-width: 900px) {
   .nav { top: 0; bottom: 0; right: auto; width: 176px; height: auto; grid-template-columns: 1fr; grid-auto-rows: 40px; align-content: start;
@@ -245,6 +285,8 @@ textarea.field { min-height: 72px; resize: vertical; }
   .sheet { left: auto; width: 420px; top: 0; max-height: none; border-top: 0; border-left: 1px solid var(--ink); }
   .toast { bottom: 32px; }
   .form-wrap { max-width: 640px; border-right: 1px solid var(--line); }
+  .fit-wrap { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); align-items: start; }
+  .fit-gen { border-right: 1px solid var(--line); }
 }
 @media (prefers-reduced-motion: reduce) { .well img { transition: none; } }
 html { padding-top: env(safe-area-inset-top, 0px); }
@@ -389,9 +431,204 @@ function family(hex) {
   return "red";
 }
 
+// ---------- Outfit engine ----------
+// Two layers. Rules say pass or fail, so nothing in an outfit clashes; a score
+// then picks the best of what passed. Runs on this device from the fields
+// every piece already has: category, colour, formality, season, style, fit.
+const OCCASIONS = [["", "Any occasion", 0], ["casual", "Casual", 2], ["smart-casual", "Smart casual", 3], ["smart", "Smart", 4], ["formal", "Formal", 5]];
+// Head to toe; "one" (one-piece) stands in for top and bottom together.
+const SLOTS = [["outer", "outerwear", "outerwear"], ["mid", "layer", "layers"], ["top", "top", "tops"], ["one", "one-piece", "one-pieces"],
+  ["bottom", "bottom", "bottoms"], ["shoes", "shoes", "shoes"], ["acc", "accessory", "accessories"]];
+const slotNoun = (s, many) => (SLOTS.find((x) => x[0] === s) || [s, s, s])[many ? 2 : 1];
+const thisSeason = () => SEASONS[[3, 3, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3][new Date().getMonth()]];
+const Outfit = (() => {
+  const NEUTRAL = new Set(["black", "charcoal", "grey", "white", "cream", "beige", "brown", "navy", "olive"]);
+  const LOUD = new Set(["stripe", "check", "print", "graphic"]);
+  const TOPS = ["tops", "shirts", "knitwear"];
+  const OPTIONAL = new Set(["outer", "mid", "acc"]);
+  const IDS = SLOTS.map((s) => s[0]);
+  const fam = (g) => g.colorFamily || family(g.color);
+  const lab = (g) => (/^#[0-9a-f]{6}$/i.test(g.color || "") ? oklch(g.color) : null);
+  // Strong colour: a real hue with some punch. Neutrals and soft denim go with anything.
+  const strong = (g) => { const f = fam(g), o = lab(g); return !!(f && o && !NEUTRAL.has(f) && o.c >= 0.1); };
+  const canSlot = (g, s) => ({
+    outer: g.category === "outerwear",
+    top: TOPS.includes(g.category),
+    mid: TOPS.includes(g.category) && (g.layer === "mid" || (g.category === "knitwear" && g.layer !== "base")),
+    one: g.category === "one-piece",
+    bottom: g.category === "trousers" || g.category === "bottoms",
+    shoes: g.category === "shoes",
+    acc: g.category === "accessories",
+  })[s];
+  const homeSlot = (g) => IDS.find((s) => s !== "mid" && canSlot(g, s));
+  // Can go under a mid layer: a tee or shirt, not a knit or an overshirt.
+  const base = (g) => !!g && g.layer !== "mid" && g.layer !== "outer" && !(g.category === "knitwear" && g.layer !== "base");
+  const target = (ctx) => (OCCASIONS.find((o) => o[0] === ctx.occasion) || OCCASIONS[0])[2];
+  function fits(g, ctx) {
+    const st = g.status || "owned";
+    if (st !== "owned" && !(ctx.wishlist && st === "wishlist")) return false;
+    if (ctx.season && (g.seasons || []).length && !g.seasons.includes(ctx.season)) return false;
+    const t = target(ctx);
+    return !(t && g.formality && Math.abs(g.formality - t) > 1);
+  }
+  const lookup = (all) => { const m = new Map(all.map((g) => [g.id, g])); return (id) => (id ? m.get(id) || null : null); };
+  const list = (o, find) => IDS.map((s) => find(o[s])).filter(Boolean);
+  const sig = (o) => IDS.map((s) => o[s] || "").join("|");
+
+  // The rules. Returns the first one broken, or "".
+  function broken(ps) {
+    const f = ps.map((g) => g.formality).filter(Boolean);
+    if (f.length > 1 && Math.max(...f) - Math.min(...f) > 2) return "formality";
+    if (ps.filter(strong).length > 1) return "colour";
+    if (ps.filter((g) => LOUD.has(g.pattern)).length > 1) return "pattern";
+    const st = ps.filter((g) => (g.styles || []).length);
+    if (st.length > 1 && st.some((g) => !st.some((h) => h !== g && h.styles.some((x) => g.styles.includes(x))))) return "style";
+    return "";
+  }
+  const RULE = { formality: "the pieces are too far apart in formality", colour: "two strong colours", pattern: "two patterned pieces", style: "a piece shares no style with the rest" };
+
+  const bigTop = (g) => ["oversized", "relaxed"].includes(g.fit) || g.silhouette === "boxy";
+  const fittedTop = (g) => ["slim", "skinny"].includes(g.fit) || g.silhouette === "tailored";
+  const wideLeg = (g) => g.silhouette === "wide" || ["oversized", "relaxed"].includes(g.fit);
+  const narrowLeg = (g) => ["slim", "skinny"].includes(g.fit) || ["tapered", "skinny"].includes(g.silhouette);
+  // 1: big top over narrow legs, 2: fitted top over wide legs, -1: big over wide.
+  function proportion(o, find) {
+    const up = find(o.mid) || find(o.top), low = find(o.bottom);
+    if (!up || !low) return 0;
+    if (bigTop(up) && narrowLeg(low)) return 1;
+    if (fittedTop(up) && wideLeg(low)) return 2;
+    if (bigTop(up) && wideLeg(low)) return -1;
+    return 0;
+  }
+  // Higher is better. Colour counts most in the colour-matched modes.
+  function score(o, ctx, mode, find) {
+    const ps = list(o, find);
+    const fams = ps.map(fam).filter(Boolean), n = new Set(fams).size;
+    let c = n <= 2 ? 2 : n === 3 ? 1.5 : n === 4 ? 0 : -2;
+    if (fams.length > n) c += 0.8; // a colour repeats
+    const up = find(o.mid) || find(o.top), low = find(o.bottom);
+    if (up && low && lab(up) && lab(low)) { const d = Math.abs(lab(up).l - lab(low).l); c += d >= 0.15 && d <= 0.65 ? 1.5 : d < 0.08 ? -0.5 : 0; }
+    if (ps.filter(strong).length === 1 && ps.length >= 3) c += 0.8; // one accent on neutrals
+    const sh = find(o.shoes), ac = find(o.acc), ou = find(o.outer);
+    if (sh && ac && fam(sh) === fam(ac)) c += 1;
+    if (sh && ou && fam(sh) === fam(ou)) c += 0.5;
+    const p = proportion(o, find);
+    let w = p > 0 ? 1.5 : p < 0 ? -1 : 0;
+    if ((ctx.season === "winter" || ctx.season === "autumn") && o.outer) w += 1;
+    if (ctx.season === "winter" && o.mid) w += 0.5;
+    if (ctx.season === "summer" && (o.outer || o.mid)) w -= 1.5;
+    for (const g of ps) if (ctx.season && (g.seasons || []).includes(ctx.season)) w += 0.2;
+    const st = ps.filter((g) => (g.styles || []).length);
+    if (ctx.style) w += 1.5 * ps.filter((g) => (g.styles || []).includes(ctx.style)).length;
+    if (st.length > 1 && STYLES.some((x) => st.every((g) => g.styles.includes(x)))) w += 1;
+    return (mode === "random" ? 0.3 : 1) * c + w;
+  }
+
+  const OUTER = { winter: 0.95, autumn: 0.8, spring: 0.5, summer: 0.1, "": 0.5 };
+  const MID = { winter: 0.6, autumn: 0.45, spring: 0.25, summer: 0.05, "": 0.3 };
+  const any = (a) => (a.length ? a[(Math.random() * a.length) | 0].id : null);
+  function sample(ctx, pools, cur, locks, find) {
+    // A locked slot keeps its piece; an optional slot can also be locked empty.
+    const kept = (s) => !!locks[s] && (!!find(cur[s]) || (OPTIONAL.has(s) && !cur[s]));
+    const o = {};
+    for (const s of IDS) if (kept(s)) o[s] = cur[s] || null;
+    const one = kept("one") ? true : kept("top") || kept("bottom") ? false
+      : !pools.top.length || !pools.bottom.length ? pools.one.length > 0
+      : Math.random() < Math.min(0.35, pools.one.length / (pools.one.length + Math.min(pools.top.length, pools.bottom.length)));
+    if (one) { if (!kept("one")) o.one = any(pools.one); o.top = o.bottom = null; }
+    else {
+      o.one = null;
+      if (!kept("bottom")) o.bottom = any(pools.bottom);
+      if (!kept("top")) o.top = any(kept("mid") && o.mid ? pools.base.filter((g) => g.id !== o.mid) : pools.top);
+    }
+    if (!kept("mid")) o.mid = (one || base(find(o.top))) && Math.random() < MID[ctx.season || ""] ? any(pools.mid.filter((g) => g.id !== o.top)) : null;
+    if (!kept("outer")) o.outer = Math.random() < Math.max(OUTER[ctx.season || ""], target(ctx) >= 4 ? 0.85 : 0) ? any(pools.outer) : null;
+    if (!kept("shoes")) o.shoes = any(pools.shoes);
+    if (!kept("acc")) o.acc = Math.random() < 0.5 ? any(pools.acc) : null;
+    return o;
+  }
+
+  // all: every live piece. cur and locks: the outfit on screen and what is locked.
+  // Returns { outfit, gaps } or { error }.
+  function generate(all, ctx, mode, cur, locks, recent) {
+    const find = lookup(all), pools = {};
+    for (const s of IDS) pools[s] = all.filter((g) => canSlot(g, s) && fits(g, ctx));
+    pools.base = pools.top.filter(base);
+    const have = (s) => pools[s].length > 0 || (!!locks[s] && !!find(cur[s]));
+    const none = (s) => {
+      const what = slotNoun(s, true);
+      if (!all.some((g) => canSlot(g, s) && fits(g, { wishlist: ctx.wishlist }))) return `No ${what} in your wardrobe yet`;
+      const occ = (OCCASIONS.find((x) => x[0] === ctx.occasion) || OCCASIONS[0]);
+      return `No ${what} for ${[ctx.season, occ[0] ? occ[1].toLowerCase() : ""].filter(Boolean).join(" and ")}`;
+    };
+    if (!have("one") && !(have("top") && have("bottom"))) return { error: none(!have("top") ? "top" : "bottom") + "." };
+    const gaps = have("shoes") ? [] : [["shoes", none("shoes")]];
+    const seen = new Map(), fails = {};
+    for (let i = 0; i < 600; i++) {
+      const o = sample(ctx, pools, cur, locks, find), k = sig(o);
+      if (seen.has(k)) continue;
+      const b = broken(list(o, find));
+      if (b) { fails[b] = (fails[b] || 0) + 1; seen.set(k, null); continue; }
+      seen.set(k, { o, s: score(o, ctx, mode, find) });
+    }
+    const ok = [...seen.entries()].filter((e) => e[1]);
+    if (!ok.length) {
+      const worst = Object.entries(fails).sort((a, b) => b[1] - a[1])[0];
+      return { error: `Nothing passes: every combination has ${RULE[worst ? worst[0] : "colour"]}. Unlock a piece or change the options.` };
+    }
+    // Never one of the last few, unless nothing else is left.
+    const now = sig(cur), fresh = ok.filter(([k]) => k !== now && !recent.includes(k)), notNow = ok.filter(([k]) => k !== now);
+    const from = fresh.length ? fresh : notNow.length ? notNow : ok;
+    const jitter = mode === "random" ? 10 : 0.8; // random: any outfit that passes, colour: the best few
+    let best = null, bv = -Infinity;
+    for (const [, x] of from) { const v = x.s + Math.random() * jitter; if (v > bv) { bv = v; best = x.o; } }
+    return { outfit: best, gaps };
+  }
+
+  // Pieces for one slot: those that pass with the rest (best first), then the others.
+  function options(all, ctx, mode, cur, slot) {
+    const find = lookup(all), good = [], other = [];
+    for (const g of all) {
+      if (!canSlot(g, slot) || (g.status || "owned") === "archived") continue;
+      const o = { ...cur, [slot]: g.id };
+      if (slot === "one") o.top = o.bottom = null;
+      if (slot === "top" || slot === "bottom") o.one = null;
+      if (slot !== "mid" && o.mid === g.id) o.mid = null;
+      if (slot === "mid" && o.top === g.id) o.top = null;
+      if (fits(g, ctx) && !broken(list(o, find))) good.push({ g, s: score(o, ctx, mode, find) }); else other.push(g);
+    }
+    good.sort((a, b) => b.s - a.s);
+    return { good: good.map((x) => x.g), other };
+  }
+
+  // One or two short sentences on why it works, or which rule it breaks.
+  function explain(o, all) {
+    const find = lookup(all), ps = list(o, find);
+    if (!ps.length) return "";
+    const b = broken(ps);
+    if (b) return `Breaks a rule: ${RULE[b]}.`;
+    const and = (a) => (a.length > 1 ? a.slice(0, -1).join(", ") + " and " + a[a.length - 1] : a[0] || "");
+    const fams = [...new Set(["outer", "mid", "top", "one", "bottom"].map((s) => find(o[s])).filter(Boolean).map(fam).filter(Boolean))].slice(0, 3);
+    const f = ps.map((g) => g.formality).filter(Boolean);
+    const lvl = f.length ? FORMALITY[Math.round(f.reduce((x, y) => x + y, 0) / f.length)].toLowerCase() : "";
+    let s = and(fams);
+    if (lvl) s += (s ? ", " : "") + (f.length > 1 && Math.max(...f) === Math.min(...f) ? "all " : "") + lvl;
+    s = s ? s[0].toUpperCase() + s.slice(1) + "." : "";
+    const p = proportion(o, find), up = find(o.mid) || find(o.top), low = find(o.bottom);
+    if (p === 1) s += ` ${up.silhouette === "boxy" ? "Boxy" : "Relaxed"} top over ${low.silhouette === "tapered" ? "tapered" : "slim"} legs.`;
+    else if (p === 2) s += " Fitted top over wide legs.";
+    else {
+      const st = ps.filter((g) => (g.styles || []).length), shared = st.length > 1 && STYLES.find((x) => st.every((g) => g.styles.includes(x)));
+      if (shared) s += ` All ${shared}.`;
+    }
+    return s.trim();
+  }
+  return { generate, options, explain, homeSlot, sig, broken, fits, canSlot, OPTIONAL, IDS };
+})();
+
 // ---------- Version ----------
 // Raised together with VERSION in sw.js on every release.
-const APP_VERSION = "1.5.1";
+const APP_VERSION = "1.6.0";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 function applyUpdate() {
@@ -439,9 +676,9 @@ const Undo = (() => {
     b.title = last ? `Undo: ${last.label}` : "Nothing to undo";
     b.setAttribute("aria-label", b.title);
   }
-  function note(id, before) {
-    if (open) { if (!open.changes.some((c) => c.id === id)) open.changes.push({ id, before }); return; }
-    stack.push({ label: "Last change", changes: [{ id, before }] }); keep();
+  function note(id, before, col = "garments") {
+    if (open) { if (!open.changes.some((c) => c.id === id && (c.col || "garments") === col)) open.changes.push({ id, before, col }); return; }
+    stack.push({ label: "Last change", changes: [{ id, before, col }] }); keep();
   }
   // Groups every write inside fn into one undo step with this label.
   async function act(label, fn) {
@@ -454,7 +691,7 @@ const Undo = (() => {
     const e = stack.pop(); busy = true; paint();
     try {
       for (const c of [...e.changes].reverse()) {
-        const ref = S.db.collection("garments").doc(c.id);
+        const ref = S.db.collection(c.col || "garments").doc(c.id);
         if (c.before) await ref.set(c.before, { quiet: true });
         else await ref.update({ deleted: true, deletedAt: Date.now() }, { quiet: true }).catch(() => {});
       }
@@ -475,7 +712,7 @@ async function doUndo() {
   toast(`Undone: ${e.label}`);
   // Show what came back: a restored piece opens; a page whose piece is gone returns to the wardrobe.
   const ids = [...new Set(e.changes.map((c) => c.id))];
-  const back = ids.length === 1 && e.changes[0].before && !e.changes[0].before.deleted && !wasLive.has(ids[0]);
+  const back = ids.length === 1 && (e.changes[0].col || "garments") === "garments" && e.changes[0].before && !e.changes[0].before.deleted && !wasLive.has(ids[0]);
   if (back) location.hash = "item-" + ids[0];
   else if (r.v === "item" && !byId(r.id)) location.hash = "wardrobe";
   else render();
@@ -534,7 +771,7 @@ function route() {
   if (h.startsWith("item-")) return { v: "item", id: h.slice(5) };
   return { v: ["wardrobe", "add", "batch", "lists", "boards", "outfits", "profile"].includes(h) ? h : "wardrobe" };
 }
-window.addEventListener("hashchange", () => { S.edit = null; S.confirmDel = false; S.sheet = null; S.slide = 0; S.err = ""; if (route().v === "add" && !S.draft) newDraft(); if (route().v !== "batch" && S.batch && !S.batch.busy) clearBatch(); render(); window.scrollTo(0, 0); });
+window.addEventListener("hashchange", () => { S.edit = null; S.confirmDel = false; S.sheet = null; S.fit.sheet = null; S.slide = 0; S.err = ""; if (route().v === "add" && !S.draft) newDraft(); if (route().v !== "batch" && S.batch && !S.batch.busy) clearBatch(); render(); window.scrollTo(0, 0); });
 function newDraft(keep) { S.draft = { status: "owned", ...(keep || {}) }; S.files.forEach((f) => URL.revokeObjectURL(f.url)); S.files = []; S.more = false; S.err = ""; }
 
 // ---------- Render ----------
@@ -545,7 +782,7 @@ function render() {
     a.toggleAttribute("aria-current", false); if (on) a.setAttribute("aria-current", "page");
   });
   $("#fab").hidden = !(r.v === "wardrobe") || !S.canWrite || !S.db;
-  const v = { wardrobe: viewWardrobe, add: viewAdd, batch: viewBatch, item: viewItem, profile: viewProfile, lists: viewSoon, boards: viewSoon, outfits: viewSoon }[r.v];
+  const v = { wardrobe: viewWardrobe, add: viewAdd, batch: viewBatch, item: viewItem, profile: viewProfile, lists: viewSoon, boards: viewSoon, outfits: viewOutfits }[r.v];
   v(r);
   renderLayer();
 }
@@ -555,6 +792,7 @@ function needStore() {
   $("#top").innerHTML = `<div class="top-row"><span class="word">RAIL</span></div>`;
   $("#main").innerHTML = S.failed === "nodb"
     ? emptyBox("Storage is blocked", "This browser is not letting RAIL save on this device. Turn off private browsing, or open RAIL in Safari or Chrome.")
+    : S.failed === "blocked" ? emptyBox("RAIL is open somewhere else", "Another tab or window still runs the older version of RAIL. Close it, and this one opens.")
     : emptyBox("Opening your wardrobe", "Loading your pieces.");
   return true;
 }
@@ -658,6 +896,7 @@ function clearFilters() { S.sel = { category: [], brand: [], color: [], season: 
 function renderLayer() {
   const L = $("#layer");
   if (S.sheet && route().v === "item") return renderItemSheet(L);
+  if (S.fit.sheet && route().v === "outfits") return renderFitSheet(L);
   if (!S.filterOpen || route().v !== "wardrobe") { L.innerHTML = ""; return; }
   const pool = live().filter((g) => (g.status || "owned") === S.status);
   const count = (vals) => { const m = new Map(); vals.forEach((v) => v && m.set(v, (m.get(v) || 0) + 1)); return [...m].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(b[0])); };
@@ -1003,7 +1242,8 @@ function viewItem({ id }) {
         <div class="meta"><span class="cap1" style="display:inline-block">${esc(g.status || "owned")}</span> · Added ${fmtDate(g.createdAt || Date.now())}</div></div>
       ${S.canWrite && !editing ? `<div class="acts">
         <button class="btn plain" id="fav" aria-pressed="${!!g.fav}"><span class="sq${g.fav ? " on" : ""}"></span>${g.fav ? "Favourite" : "Add to favourites"}</button>
-        <button class="btn plain solid" id="edit">Edit details</button></div>` : `<div style="border-bottom:1px solid var(--line)"></div>`}
+        <button class="btn plain solid" id="edit">Edit details</button>
+        ${(g.status || "owned") !== "archived" ? `<button class="btn plain" id="around" style="grid-column:1 / -1">Build an outfit with this</button>` : ""}</div>` : `<div style="border-bottom:1px solid var(--line)"></div>`}
       ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
       ${editing ? `<div class="part" style="padding-bottom:0;border-bottom:0"><h2>Edit details</h2></div><div id="fields">${fieldsHTML(S.edit, true)}</div>
         <div class="actions"><button class="label" id="cancel">Cancel</button><button class="label solid" id="save" ${S.busy ? "disabled" : ""}>${S.busy ? "Saving" : "Save changes"}</button></div>`
@@ -1032,6 +1272,7 @@ function viewItem({ id }) {
   $("#fav")?.addEventListener("click", () => saveItem(g, { fav: !g.fav }, g.fav ? "Removed from favourites" : "Added to favourites"));
   const startEdit = () => { S.edit = { ...g, formality: g.formality ? String(g.formality) : "", price: g.price != null ? String(g.price) : "" }; render(); };
   $("#edit")?.addEventListener("click", startEdit);
+  $("#around")?.addEventListener("click", () => buildAround(g));
   $("#complete")?.addEventListener("click", startEdit);
   $("#dup")?.addEventListener("click", async () => {
     const nid = newId(), now = Date.now();
@@ -1185,6 +1426,245 @@ function viewProfile() {
   $("#demo-all").onclick = (e) => addAllDemo(e.currentTarget);
   $("#demo-rm").onclick = removeDemo;
 }
+// Outfits ---------------------------------------------------------------------
+// The generator on top: one grey well with the pieces laid out head to toe,
+// each with a lock and a swap. Saved outfits below. Season starts on today's.
+S.fit = {
+  mode: pref.get("fitMode", "colour"),
+  ctx: { season: thisSeason(), occasion: pref.get("fitOcc", ""), style: pref.get("fitStyle", ""), wishlist: pref.get("fitWish", false) },
+  cur: pref.get("fitCur", {}), locks: pref.get("fitLocks", {}), recent: pref.get("fitRecent", []),
+  err: "", gaps: [], sheet: null, auto: false,
+};
+S.outfits = [];
+const FIT_ICON = {
+  lock: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="11" width="14" height="9"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`,
+  open: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="11" width="14" height="9"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg>`,
+  swap: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" aria-hidden="true"><path d="M4 9h14l-4-4"/><path d="M20 15H6l4 4"/></svg>`,
+};
+const fitPool = () => live().filter((g) => (g.status || "owned") !== "archived");
+function saveFit() {
+  const F = S.fit;
+  pref.set("fitMode", F.mode); pref.set("fitOcc", F.ctx.occasion); pref.set("fitStyle", F.ctx.style); pref.set("fitWish", F.ctx.wishlist);
+  pref.set("fitCur", F.cur); pref.set("fitLocks", F.locks); pref.set("fitRecent", F.recent);
+}
+// Pieces deleted since are dropped from the outfit on screen.
+function cleanFit() {
+  const F = S.fit;
+  for (const s of Outfit.IDS) if (F.cur[s] && !byId(F.cur[s])) { F.cur[s] = null; delete F.locks[s]; }
+}
+const fitEmpty = () => !Outfit.IDS.some((s) => S.fit.cur[s]);
+function shuffleFit() {
+  const F = S.fit;
+  cleanFit();
+  const r = Outfit.generate(fitPool(), F.ctx, F.mode, F.cur, F.locks, F.recent);
+  if (r.error) { F.err = r.error; F.gaps = []; }
+  else {
+    F.err = ""; F.gaps = r.gaps; F.cur = r.outfit;
+    F.recent = [Outfit.sig(r.outfit), ...F.recent.filter((k) => k !== Outfit.sig(r.outfit))].slice(0, 8);
+  }
+  saveFit();
+}
+// Put one piece in its slot and lock it (choosing, or building around a piece).
+function placeFit(g, slot) {
+  const F = S.fit;
+  F.cur = { ...F.cur, [slot]: g ? g.id : null };
+  if (slot === "one" && g) F.cur.top = F.cur.bottom = null;
+  if ((slot === "top" || slot === "bottom") && g) F.cur.one = null;
+  if (g && slot !== "mid" && F.cur.mid === g.id) F.cur.mid = null;
+  if (g && slot === "mid" && F.cur.top === g.id) F.cur.top = null;
+  F.locks = { ...F.locks, [slot]: true };
+  // A slot left empty by the change is filled at once.
+  const need = !F.cur.one && !(F.cur.top && F.cur.bottom);
+  if (need) shuffleFit(); else { F.err = ""; saveFit(); }
+}
+function buildAround(g) {
+  const F = S.fit, slot = Outfit.homeSlot(g);
+  F.mode = "around"; F.center = g.id;
+  F.cur = { [slot]: g.id }; F.locks = { [slot]: true };
+  shuffleFit();
+  location.hash = "outfits";
+}
+const fitImg = (g) => {
+  const im = g && shown(g.images?.[0]);
+  return im ? `<img alt="" src="${blobUrl(im.thumb || im.id)}"${studioOn(g.images[0]) ? "" : ` class="raw"`}>` : `<span class="label mute fl-none">No photo</span>`;
+};
+function viewOutfits() {
+  if (needStore()) return;
+  const F = S.fit;
+  $("#top").innerHTML = `<div class="top-row"><span class="word">RAIL</span><span class="label title grow">Outfits</span><button class="tbtn label" id="fit-opt">Options</button></div>`;
+  $("#fit-opt").onclick = () => { F.sheet = { options: true, before: JSON.stringify(F.ctx) }; renderLayer(); };
+  if (!S.loaded) { $("#main").innerHTML = emptyBox("Opening your wardrobe", "Loading your pieces."); return; }
+  if (!fitPool().length) {
+    $("#main").innerHTML = emptyBox("No pieces yet", "Outfits are built from your wardrobe. Add a top, a bottom and shoes, or add the demo pieces in Profile.", `<a class="btn solid full" href="#add">Add a piece</a>`);
+    return;
+  }
+  cleanFit();
+  // First visit fills the outfit; a top or bottom deleted since is filled again.
+  const core = F.cur.one || (F.cur.top && F.cur.bottom);
+  if ((!F.auto && fitEmpty()) || (!fitEmpty() && !core && !F.err)) shuffleFit();
+  F.auto = true;
+  const all = fitPool(), c = F.cur;
+  const piece = (slot, w) => {
+    const g = byId(c[slot]); if (!g) return "";
+    const locked = !!F.locks[slot], noun = slotNoun(slot);
+    const tag = [g.status === "wishlist" ? "Wishlist" : "", F.mode === "around" && F.center === g.id ? "Centre" : ""].filter(Boolean).join(" · ");
+    return `<div class="pc" style="width:${w}%">
+      <button class="pc-img" data-pick="${slot}" aria-label="Choose the ${noun}. Now: ${esc(g.name)}">${fitImg(g)}</button>
+      <div class="pc-tools">
+        <button class="pc-b" data-lock="${slot}" aria-pressed="${locked}" aria-label="${locked ? "Unlock" : "Lock"} ${noun}">${locked ? FIT_ICON.lock : FIT_ICON.open}</button>
+        <button class="pc-b" data-swap="${slot}" aria-label="Swap ${noun}">${FIT_ICON.swap}</button>
+      </div>
+      ${tag ? `<span class="pc-tag label">${tag}</span>` : ""}
+    </div>`;
+  };
+  const gap = (slot, w) => { const x = F.gaps.find((q) => q[0] === slot); return x && !c[slot] ? `<div class="pc pc-gap" style="width:${w}%"><span class="mute">${esc(x[1])}</span></div>` : ""; };
+  const up = ["outer", "mid", c.one ? "one" : "top"].filter((s) => byId(c[s]));
+  const uw = up.length >= 3 ? 31 : 45;
+  const adds = ["outer", "mid", "acc"].filter((s) => !c[s] && all.some((g) => Outfit.canSlot(g, s)));
+  const ctxText = [F.ctx.season ? F.ctx.season[0].toUpperCase() + F.ctx.season.slice(1) : "Any season",
+    (OCCASIONS.find((o) => o[0] === F.ctx.occasion) || OCCASIONS[0])[1], F.ctx.style ? F.ctx.style[0].toUpperCase() + F.ctx.style.slice(1) : "Any style",
+    F.ctx.wishlist ? "With wishlist" : ""].filter(Boolean).join(" · ");
+  const sig = Outfit.sig(c), saved = S.outfits.filter((o) => !o.deleted).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const isSaved = saved.some((o) => Outfit.sig(o.pieces || {}) === sig);
+  const why = F.err || Outfit.explain(c, all);
+  $("#main").innerHTML = `<div class="fit-wrap">
+    <section class="fit-gen">
+      <div class="modes" role="group" aria-label="How to build">
+        ${[["random", "Random"], ["colour", "Colour-matched"], ["around", "Around a piece"]].map(([m, l]) => `<button class="label" data-mode="${m}" aria-pressed="${F.mode === m}">${l}</button>`).join("")}
+      </div>
+      <button class="fit-ctx gut" id="fit-ctx"><span class="grow">${esc(ctxText)}</span><span class="label">Change</span></button>
+      <div class="fl" aria-label="Outfit">
+        <div class="tier">${up.map((s) => piece(s, uw)).join("")}</div>
+        ${c.bottom ? `<div class="tier tier-2">${piece("bottom", 46)}</div>` : ""}
+        <div class="tier tier-3">${piece("shoes", 34) || gap("shoes", 34)}${piece("acc", 24)}</div>
+      </div>
+      ${adds.length ? `<div class="fit-adds gut">${adds.map((s) => `<button class="chip" data-pick="${s}">+ ${slotNoun(s)[0].toUpperCase() + slotNoun(s).slice(1)}</button>`).join("")}</div>` : ""}
+      <p class="why gut${F.err ? " err-t" : ""}" aria-live="polite">${esc(why)}</p>
+      <div class="actions"><button class="label" id="fit-save" ${fitEmpty() || isSaved ? "disabled" : ""}>${isSaved ? "Saved" : "Save outfit"}</button><button class="label solid" id="fit-shuffle">Shuffle</button></div>
+    </section>
+    <section class="fit-saved">
+      <div class="label mute gut fit-head">Saved outfits${saved.length ? ` <span style="font-variant-numeric:tabular-nums">${saved.length}</span>` : ""}</div>
+      ${saved.length ? saved.map(savedRow).join("") : `<p class="mute gut" style="margin:14px 0">Outfits you save show up here. Tap one to open it again.</p>`}
+    </section>
+  </div>`;
+  const M = $("#main");
+  M.querySelectorAll("[data-mode]").forEach((b) => b.onclick = () => {
+    const m = b.dataset.mode;
+    if (m === "around") { F.sheet = { around: true }; return renderLayer(); }
+    // Leaving "around": the centre piece is no longer held.
+    if (F.mode === "around" && F.center) for (const s of Outfit.IDS) if (c[s] === F.center) delete F.locks[s];
+    F.mode = m; F.center = null; shuffleFit(); render();
+  });
+  $("#fit-ctx").onclick = () => { F.sheet = { options: true, before: JSON.stringify(F.ctx) }; renderLayer(); };
+  M.querySelectorAll("[data-lock]").forEach((b) => b.onclick = () => {
+    const s = b.dataset.lock; F.locks = { ...F.locks }; if (F.locks[s]) delete F.locks[s]; else F.locks[s] = true; saveFit(); render();
+  });
+  M.querySelectorAll("[data-swap]").forEach((b) => b.onclick = () => {
+    const s = b.dataset.swap, { good } = Outfit.options(all, F.ctx, F.mode, c, s);
+    const rest = good.filter((g) => g.id !== c[s]);
+    if (!rest.length) return toast(`No other ${slotNoun(s, true)} go with the rest`);
+    // Next best after the current one, round and round.
+    const ix = good.findIndex((g) => g.id === c[s]);
+    const next = ix >= 0 ? good[(ix + 1) % good.length] : rest[0];
+    F.cur = { ...c, [s]: next.id }; F.err = ""; saveFit(); render();
+  });
+  M.querySelectorAll("[data-pick]").forEach((b) => b.onclick = () => { F.sheet = { slot: b.dataset.pick }; renderLayer(); });
+  $("#fit-shuffle").onclick = () => { shuffleFit(); render(); };
+  $("#fit-save").onclick = async () => {
+    if (fitEmpty() || isSaved) return;
+    const pieces = Object.fromEntries(Outfit.IDS.filter((s) => c[s]).map((s) => [s, c[s]])), now = Date.now();
+    try {
+      await Undo.act("Outfit saved", () => S.db.collection("outfits").doc("o" + newId().slice(1)).set({ pieces, season: F.ctx.season || null, occasion: F.ctx.occasion || null, deleted: false, createdAt: now, updatedAt: now }));
+      toast("Outfit saved");
+    } catch { toast("Saving failed. Try again."); }
+  };
+  M.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => {
+    const o = S.outfits.find((x) => x.id === b.dataset.open); if (!o) return;
+    F.cur = Object.fromEntries(Outfit.IDS.map((s) => [s, o.pieces?.[s] && byId(o.pieces[s]) ? o.pieces[s] : null]));
+    F.locks = Object.fromEntries(Outfit.IDS.map((s) => [s, true]));
+    if (F.mode === "around") F.mode = "colour";
+    F.center = null; F.err = ""; F.gaps = []; saveFit(); render(); window.scrollTo(0, 0);
+    toast("Outfit opened. Unlock a piece to reshuffle it.");
+  });
+  M.querySelectorAll("[data-unsave]").forEach((b) => b.onclick = async () => {
+    try { await Undo.act("Saved outfit removed", () => S.db.collection("outfits").doc(b.dataset.unsave).update({ deleted: true, updatedAt: Date.now() })); toast("Saved outfit removed", true); }
+    catch { toast("Removing failed. Try again."); }
+  });
+}
+// A saved outfit: its pieces in a row, why it works, and when it was saved.
+// A piece deleted since stays visible, faded and marked, so the gap is clear.
+function savedRow(o) {
+  const ids = Outfit.IDS.map((s) => o.pieces?.[s]).filter(Boolean);
+  const gone = ids.filter((id) => !byId(id)).length;
+  const thumbs = ids.map((id) => {
+    const g = S.items.find((x) => x.id === id), dead = !byId(id);
+    return `<span class="st${dead ? " dead" : ""}">${g ? fitImg(g) : ""}</span>`;
+  }).join("");
+  const live1 = Object.fromEntries(Object.entries(o.pieces || {}).filter(([, id]) => byId(id)));
+  const text = Outfit.explain(live1, fitPool()) || "Outfit";
+  return `<div class="srow">
+    <button class="srow-main" data-open="${esc(o.id)}" aria-label="Open saved outfit: ${esc(text)}">
+      <span class="sthumbs">${thumbs}</span>
+      <span class="stext">${esc(text)}</span>
+      <span class="mute stext-2">Saved ${fmtDate(o.createdAt)}${gone ? ` · <span class="alert-t">${gone} piece${gone > 1 ? "s" : ""} deleted</span>` : ""}</span>
+    </button>
+    <button class="x" data-unsave="${esc(o.id)}" aria-label="Remove saved outfit">×</button>
+  </div>`;
+}
+// Sheets over the Outfits page: options, choosing a piece, building around one.
+function renderFitSheet(L) {
+  const F = S.fit, sh = F.sheet, all = fitPool();
+  const close = () => {
+    const changed = sh.options && sh.before !== JSON.stringify(F.ctx);
+    F.sheet = null;
+    if (changed) { saveFit(); shuffleFit(); }
+    render();
+  };
+  const head = (title) => `<div class="sheet-head"><span class="label grow gut">${title}</span><button class="tbtn label" id="done" style="background:var(--ink);color:var(--paper);height:100%">Done</button></div>`;
+  const chip = (on, attrs, body) => `<button class="chip" aria-pressed="${on}" ${attrs}>${body}</button>`;
+  const tiles = (list) => `<div class="tiles">${list.map((g) => `<button class="tile" data-choose="${esc(g.id)}"><span class="shot">${fitImg(g)}</span><span class="tile-n">${esc(g.name)}</span>${g.status === "wishlist" ? `<span class="label mute">Wishlist</span>` : ""}</button>`).join("")}</div>`;
+  if (sh.options) {
+    L.innerHTML = `<div class="scrim" id="scrim"></div>
+    <div class="sheet" role="dialog" aria-label="Outfit options">
+      ${head("Outfit options")}
+      <div class="sheet-body">
+        <div class="group"><span class="label">Season</span><div class="chips">${chip(!F.ctx.season, `data-season=""`, "Any season")}${SEASONS.map((x) => chip(F.ctx.season === x, `data-season="${x}"`, `<span class="cap1">${x}</span>`)).join("")}</div></div>
+        <div class="group"><span class="label">Occasion</span><div class="chips">${OCCASIONS.map(([id, l]) => chip(F.ctx.occasion === id, `data-occ="${id}"`, l)).join("")}</div></div>
+        <div class="group"><span class="label">Lean towards a style</span><div class="chips">${chip(!F.ctx.style, `data-style=""`, "Any style")}${STYLES.map((x) => chip(F.ctx.style === x, `data-style="${x}"`, `<span class="cap1">${x}</span>`)).join("")}</div></div>
+        <div class="group"><span class="label">Wishlist pieces</span><div class="chips">${chip(F.ctx.wishlist, `id="wish"`, "Include wishlist pieces")}</div>
+          <p class="mute" style="margin:10px 0 0">See what a piece you want would go with. Wishlist pieces are marked in the outfit.</p></div>
+      </div></div>`;
+    const set = (k, v) => { F.ctx = { ...F.ctx, [k]: v }; renderLayer(); };
+    L.querySelectorAll("[data-season]").forEach((b) => b.onclick = () => set("season", b.dataset.season));
+    L.querySelectorAll("[data-occ]").forEach((b) => b.onclick = () => set("occasion", b.dataset.occ));
+    L.querySelectorAll("[data-style]").forEach((b) => b.onclick = () => set("style", b.dataset.style));
+    $("#wish").onclick = () => set("wishlist", !F.ctx.wishlist);
+  } else if (sh.around) {
+    const list = all.filter((g) => (g.status || "owned") === "owned" || (F.ctx.wishlist && g.status === "wishlist"));
+    const groups = CATEGORIES.map(([id, l]) => [l, list.filter((g) => g.category === id)]).filter((x) => x[1].length);
+    L.innerHTML = `<div class="scrim" id="scrim"></div>
+    <div class="sheet" role="dialog" aria-label="Build around a piece">
+      ${head("Build around a piece")}
+      <div class="sheet-body">${groups.map(([l, gs]) => `<div class="label mute gut tiles-head">${esc(l)}</div>${tiles(gs)}`).join("")}</div></div>`;
+    L.querySelectorAll("[data-choose]").forEach((b) => b.onclick = () => { F.sheet = null; buildAround(byId(b.dataset.choose)); render(); });
+  } else {
+    const slot = sh.slot, noun = slotNoun(slot), { good, other } = Outfit.options(all, F.ctx, F.mode, F.cur, slot);
+    const cur = byId(F.cur[slot]);
+    L.innerHTML = `<div class="scrim" id="scrim"></div>
+    <div class="sheet" role="dialog" aria-label="Choose the ${noun}">
+      ${head(`Choose the ${noun}`)}
+      <div class="sheet-body">
+        ${cur ? `<a class="opt" href="#item-${esc(cur.id)}"><span>Open ${esc(cur.name)}</span><span class="mute">The piece on its own page.</span></a>` : ""}
+        ${Outfit.OPTIONAL.has(slot) && cur ? `<button class="opt" id="no-slot"><span>No ${noun}</span><span class="mute">Leave it out and keep it out when you shuffle.</span></button>` : ""}
+        <div class="label mute gut tiles-head">Goes with the rest</div>
+        ${good.length ? tiles(good) : `<p class="mute gut" style="margin:0 0 14px">Nothing passes the rules with the pieces you have now.</p>`}
+        ${other.length ? `<div class="label mute gut tiles-head">Breaks a rule or the options</div>${tiles(other)}` : ""}
+      </div></div>`;
+    L.querySelectorAll("[data-choose]").forEach((b) => b.onclick = () => { F.sheet = null; placeFit(byId(b.dataset.choose), slot); render(); });
+    $("#no-slot")?.addEventListener("click", () => { F.sheet = null; placeFit(null, slot); render(); });
+  }
+  $("#scrim").onclick = close; $("#done").onclick = close;
+}
 function viewSoon({ v }) {
   const copy = {
     lists: ["Lists", "Group pieces you already own: an autumn rotation, a travel set, everyday essentials. One piece can sit in many lists."],
@@ -1201,9 +1681,13 @@ function viewSoon({ v }) {
 const Local = (() => {
   let dbp;
   const open = () => dbp || (dbp = new Promise((res, rej) => {
-    const r = indexedDB.open("rail", 1);
-    r.onupgradeneeded = () => { r.result.createObjectStore("garments"); r.result.createObjectStore("blobs"); };
-    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    // Version 2 added "outfits". Never lower this number: an older request fails to open a newer database.
+    const r = indexedDB.open("rail", 2);
+    r.onupgradeneeded = () => { for (const n of ["garments", "blobs", "outfits"]) if (!r.result.objectStoreNames.contains(n)) r.result.createObjectStore(n); };
+    // Another open copy on an older version holds the database until it closes or reloads.
+    r.onblocked = () => { S.failed = "blocked"; render(); };
+    r.onsuccess = () => { const d = r.result; d.onversionchange = () => { d.close(); location.reload(); }; S.failed = ""; res(d); };
+    r.onerror = () => rej(r.error);
   }));
   const run = async (store, mode, fn) => {
     const d = await open();
@@ -1220,29 +1704,39 @@ const Local = (() => {
       t.oncomplete = () => res(out); t.onerror = () => rej(t.error);
     });
   };
-  const items = new Map(), subs = new Set();
-  const emit = () => setTimeout(() => {
-    const docs = [...items].map(([id, v]) => ({ id, exists: true, data: () => v, metadata: { fromCache: false } }));
-    subs.forEach((fn) => fn({ docs, metadata: { fromCache: false, hasPendingWrites: false } }));
-  });
+  const COLS = ["garments", "outfits"];
+  const data = Object.fromEntries(COLS.map((c) => [c, new Map()])), subs = Object.fromEntries(COLS.map((c) => [c, new Set()]));
+  const items = data.garments;
+  // One snapshot per collection per tick, however many writes happened in it.
+  const pending = new Set();
+  const emit = (col) => { if (pending.has(col)) return; pending.add(col); setTimeout(() => {
+    pending.delete(col);
+    const docs = [...data[col]].map(([id, v]) => ({ id, exists: true, data: () => v, metadata: { fromCache: false } }));
+    subs[col].forEach((fn) => fn({ docs, metadata: { fromCache: false, hasPendingWrites: false } }));
+  }); };
   const clone = (v) => JSON.parse(JSON.stringify(v));
-  const before = (id) => (items.has(id) ? clone(items.get(id)) : null);
   let asked = false;
   // Ask the browser not to clear RAIL's storage when the device runs low.
   const persist = () => { if (asked) return; asked = true; try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {} };
-  const ref = (id) => ({
-    id,
-    async get() { return { id, exists: items.has(id), data: () => items.get(id) }; },
-    // { quiet: true } keeps a write out of the undo history (background work, undo itself).
-    async set(v, o = {}) { const c = clone(v), was = before(id); await run("garments", "readwrite", (s) => s.put(c, id)); items.set(id, c); if (!o.quiet) Undo.note(id, was); persist(); emit(); },
-    async update(p, o = {}) {
-      if (!items.has(id)) throw { code: "invalid_argument" };
-      const was = before(id), c = { ...items.get(id), ...clone(p) };
-      await run("garments", "readwrite", (s) => s.put(c, id)); items.set(id, c); if (!o.quiet) Undo.note(id, was); emit();
-    },
-  });
+  const ref = (col, id) => {
+    const m = data[col], before = () => (m.has(id) ? clone(m.get(id)) : null);
+    return {
+      id,
+      async get() { return { id, exists: m.has(id), data: () => m.get(id) }; },
+      // { quiet: true } keeps a write out of the undo history (background work, undo itself).
+      async set(v, o = {}) { const c = clone(v), was = before(); await run(col, "readwrite", (s) => s.put(c, id)); m.set(id, c); if (!o.quiet) Undo.note(id, was, col); persist(); emit(col); },
+      async update(p, o = {}) {
+        if (!m.has(id)) throw { code: "invalid_argument" };
+        const was = before(), c = { ...m.get(id), ...clone(p) };
+        await run(col, "readwrite", (s) => s.put(c, id)); m.set(id, c); if (!o.quiet) Undo.note(id, was, col); emit(col);
+      },
+    };
+  };
   const db = {
-    collection: () => ({ doc: (id) => ref(id), onSnapshot(fn) { subs.add(fn); emit(); return () => subs.delete(fn); } }),
+    collection: (col) => {
+      if (!data[col]) throw new Error("unknown collection " + col);
+      return { doc: (id) => ref(col, id), onSnapshot(fn) { subs[col].add(fn); emit(col); return () => subs[col].delete(fn); } };
+    },
     doc: () => ({ async get() { return { exists: false, data: () => undefined }; }, onSnapshot() { return () => {}; } }),
   };
   const assets = {
@@ -1271,13 +1765,14 @@ const Local = (() => {
   return {
     db, assets, entries, removedPhotos,
     async load() {
-      for (const [id, v] of await entries("garments")) items.set(id, v);
+      for (const c of COLS) for (const [id, v] of await entries(c)) data[c].set(id, v);
       for (const [id, b] of await entries("blobs")) URLS.set(id, URL.createObjectURL(b));
     },
-    async replaceAll(records, blobs) {
+    // Restore: garments, then saved outfits (older backups have none).
+    async replaceAll(records, blobs, outfits = []) {
       for (const [id, b] of blobs) { await run("blobs", "readwrite", (s) => s.put(b, id)); URLS.set(id, URL.createObjectURL(b)); }
-      for (const [id, v] of records) { const was = before(id); await run("garments", "readwrite", (s) => s.put(v, id)); items.set(id, v); Undo.note(id, was); }
-      persist(); emit();
+      for (const [id, v] of records) await ref("garments", id).set(v);
+      for (const [id, v] of outfits) await ref("outfits", id).set(v);
     },
   };
 })();
@@ -1292,7 +1787,8 @@ async function backup() {
     const photos = {};
     for (const [id, blob] of await Local.entries("blobs")) if (used.has(id)) photos[id] = await toDataUrl(blob);
     const name = "rail-backup-" + new Date().toISOString().slice(0, 10) + ".json";
-    const file = new File([JSON.stringify({ app: "RAIL", version: 1, savedAt: new Date().toISOString(), garments, photos })], name, { type: "application/json" });
+    const outfits = Object.fromEntries(await Local.entries("outfits"));
+    const file = new File([JSON.stringify({ app: "RAIL", version: 1, savedAt: new Date().toISOString(), garments, outfits, photos })], name, { type: "application/json" });
     // Phones: the share sheet (Save to Files, Drive, AirDrop). Computers: a download.
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ files: [file], title: "RAIL backup" }); toast("Backup ready"); }
@@ -1312,7 +1808,7 @@ async function restore(file) {
     if (data.app !== "RAIL" || !data.garments) throw new Error("not a backup");
     const blobs = [];
     for (const [id, url] of Object.entries(data.photos || {})) blobs.push([id, await (await fetch(url)).blob()]);
-    await Undo.act("Backup restored", () => Local.replaceAll(Object.entries(data.garments), blobs));
+    await Undo.act("Backup restored", () => Local.replaceAll(Object.entries(data.garments), blobs, Object.entries(data.outfits || {})));
     toast(`Restored ${Object.keys(data.garments).length} pieces`);
     location.hash = "wardrobe";
   } catch { toast("That file is not a RAIL backup."); }
@@ -1513,6 +2009,10 @@ $("#undo").onclick = doUndo;
     S.db = Local.db; S.assets = Local.assets; S.canWrite = true;
     Undo.paint();
     render();
+    S.db.collection("outfits").onSnapshot((snap) => {
+      S.outfits = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (route().v === "outfits") render();
+    });
     S.db.collection("garments").onSnapshot((snap) => {
       S.items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       S.loaded = true;
