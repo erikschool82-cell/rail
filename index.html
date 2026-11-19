@@ -1111,6 +1111,7 @@ function fieldsHTML(d, full) {
   let h = row("Category", one("category", CATEGORIES, null, true), true)
     + row("Name", inp("name", "Wool overcoat", `autocomplete="off"`), true)
     + `<div class="two">${row("Brand", inp("brand", "", `autocomplete="off"`))}${row("Size", inp("size"))}</div>`
+    + `<div class="row sug" id="sug" hidden></div>`
     + row("Colour", `<div class="colour"><input type="color" id="f-color" value="${esc(s("color") || "#000000")}" aria-label="Main colour"><span class="mute">${s("color") ? `<span class="cap1">${esc(family(s("color")) || "")}</span>` : "Taken from the photo if left empty"}</span></div>`)
     + row("Status", one("status", STATUSES, null, true));
   if (full) {
@@ -1149,6 +1150,100 @@ function bindFields(root, d, onChange) {
   });
   const c = root.querySelector("#f-color");
   if (c) c.oninput = () => { touched(d).add("color"); d.color = c.value; const sp = c.nextElementSibling; sp.innerHTML = `<span class="cap1">${esc(family(c.value) || "")}</span>`; };
+  Sug.bind(root, d, onChange);
+}
+
+// Brand and model suggestions while typing ---------------------------------------
+// Brand: real brands from the catalog (tools/detect), the person's own brands first.
+// Once the brand is a known one: its named models (Geobasket, Tabi, Birkin 30),
+// found by name or nickname ("dunks"). A tap fills name, category and layer.
+// The names file is small and loads on first focus; it needs no detector.
+const catName = (it) => {
+  const last = it.noun.split(" ").pop();
+  return it.noun && !it.model.toLowerCase().endsWith(last) ? `${it.model} ${it.noun}` : it.model;
+};
+const Sug = (() => {
+  let C = null, P = null;
+  const fold = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9&+]+/g, " ").trim();
+  const hit = (f, q) => f === q || f.startsWith(q) || f.includes(" " + q);
+  function load() {
+    return P || (P = Detect.names().then((x) => {
+      const byBrand = new Map();
+      for (const it of x.items) {
+        const k = fold(it.brand), l = byBrand.get(k) || [];
+        // "Geobasket" and "Geo Basket" are one model.
+        const same = (y) => fold(y.model).replace(/ /g, "") === fold(it.model).replace(/ /g, "") && y.category === it.category;
+        const had = l.find(same);
+        if (had) { had.nick = [...new Set([...had.nick, ...it.nick])]; had.f = fold([had.model, ...had.nick].join(" ")); }
+        else l.push({ ...it, f: fold([it.model, ...it.nick].join(" ")) });
+        byBrand.set(k, l);
+      }
+      C = { brands: x.brands.map((b) => ({ b, f: fold(b) })), byBrand };
+    }).catch(() => { P = null; }));
+  }
+  function brandsFor(q) {
+    const own = [...new Set(S.items.filter((g) => !g.deleted && g.brand).map((g) => g.brand.trim()))].map((b) => ({ b, f: fold(b) }));
+    const out = [], seen = new Set();
+    for (const x of [...own, ...C.brands]) if (hit(x.f, q) && !seen.has(x.f)) { seen.add(x.f); out.push(x.b); if (out.length === 6) break; }
+    return out;
+  }
+  function modelsFor(d) {
+    const l = C.byBrand.get(fold(d.brand)) || [];
+    const q = touched(d).has("name") ? fold(d.name) : "";
+    if (!q) return l.slice(0, 8);
+    const words = q.split(" ");
+    if (l.some((it) => fold(catName(it)) === q)) return [];
+    return l.filter((it) => words.every((w) => hit(it.f, w))).slice(0, 8);
+  }
+  function paint(root, d, onChange) {
+    const el = root.querySelector("#sug");
+    if (!el) return;
+    if (!C) { el.hidden = true; return; }
+    const b = fold(d.brand), known = b && C.byBrand.has(b), focus = document.activeElement && document.activeElement.id;
+    let h = "";
+    if (b && !known && !C.brands.some((x) => x.f === b) && focus === "f-brand") {
+      const l = brandsFor(b);
+      if (l.length) h = `<span class="label">Brands</span><div class="chips">${l.map((x) => `<button type="button" class="chip" data-sb="${esc(x)}">${esc(x)}</button>`).join("")}</div>`;
+    } else if (known) {
+      const l = modelsFor(d);
+      if (l.length) h = `<span class="label">${esc(l[0].brand)} models</span><div class="chips">${l.map((it) => `<button type="button" class="chip" data-sm="${it.i}">${esc(catName(it))}</button>`).join("")}</div>`;
+    }
+    el.innerHTML = h; el.hidden = !h;
+    el.querySelectorAll("[data-sb]").forEach((x) => x.onmousedown = (e) => e.preventDefault());
+    el.querySelectorAll("[data-sb]").forEach((x) => x.onclick = () => {
+      d.brand = x.dataset.sb; touched(d).add("brand");
+      const i = root.querySelector("#f-brand"); if (i) i.value = d.brand;
+      onChange(); paint(root, d, onChange);
+    });
+    el.querySelectorAll("[data-sm]").forEach((x) => x.onclick = () => {
+      const it = (C.byBrand.get(b) || []).find((y) => y.i === +x.dataset.sm);
+      if (!it) return;
+      pickModel(root, d, it);
+      onChange(); paint(root, d, onChange);
+    });
+  }
+  function bind(root, d, onChange) {
+    const go = () => load().then(() => paint(root, d, onChange));
+    for (const id of ["#f-brand", "#f-name"]) {
+      const i = root.querySelector(id);
+      if (!i) continue;
+      i.addEventListener("focus", go);
+      i.addEventListener("input", () => C ? paint(root, d, onChange) : go());
+      i.addEventListener("blur", () => setTimeout(() => paint(root, d, onChange), 150));
+    }
+    if (d.brand) go();
+  }
+  return { bind, load };
+})();
+// A model the person chose: brand, name, and its category and layer, shown at once.
+function pickModel(root, d, it) {
+  const t = touched(d);
+  d.brand = it.brand; d.name = catName(it); d.category = it.category;
+  if (!t.has("layer") || it.layer) d.layer = it.layer || "";
+  for (const k of ["brand", "name", "category"]) t.add(k);
+  const set = (id, v) => { const i = root.querySelector(id); if (i) i.value = v; };
+  set("#f-brand", d.brand); set("#f-name", d.name);
+  for (const k of ["category", "layer"]) root.querySelectorAll(`[data-one="${k}"]`).forEach((x) => x.setAttribute("aria-pressed", String(d[k]) === x.dataset.v));
 }
 function cleanRecord(d) {
   const out = {};
@@ -1202,6 +1297,7 @@ function viewAdd() {
   $("#again").onclick = () => saveNew(true);
   bindDetect();
   detectDraft();
+  if (detectOn()) setTimeout(Detect.warm, 600);
 }
 // Re-render a form without losing the field the person is typing in.
 function keepFocus(view) {
@@ -1226,6 +1322,20 @@ function applyDetect(d, k, r, pick) {
   if ((pick || !t.has("layer")) && d.category === k.category) d.layer = k.layer || "";
   if (!t.has("name")) d.name = detName(k, t.has("color") && d.color ? d.color : r.color);
   if (!pick && !t.has("pattern") && r.pattern.p >= PATTERN_SURE) d.pattern = r.pattern.id;
+  // A clear match to a known model also gives brand and name ("Rick Owens", "Geobasket").
+  // When only the brand is clear, just the brand. A brand detection filled in for an
+  // earlier cover photo goes when the new one shows no clear brand.
+  if (pick) return;
+  if (r.brand && r.brand.sure) applyModel(d, r.brand.sure);
+  else if (!t.has("brand")) d.brand = (r.brand && r.brand.brand) || "";
+}
+// pick: a model the person tapped, which replaces what they typed.
+function applyModel(d, it, pick) {
+  const t = touched(d);
+  if (pick || !t.has("brand")) d.brand = it.brand;
+  if (pick || !t.has("name")) d.name = catName(it);
+  if (pick || !t.has("category")) d.category = it.category;
+  if ((pick || !t.has("layer")) && d.category === it.category) d.layer = it.layer || "";
 }
 // Below this the pattern stays empty: a wrong "check" or "stripe" would make the
 // outfit rules turn down good outfits. Tested on 86 labelled photos.
@@ -1249,16 +1359,18 @@ function detectDraft() {
 }
 function detectHTML() {
   if (!S.files.length) return "";
-  if (!detectOn()) return `<button type="button" class="batch-link" id="det-go"><span class="label">Detect from photo</span><br><span class="mute">Fills in the type, a name and the pattern from the cover photo. Downloads ${Detect.MB} MB once. Photos stay on this phone.</span></button>`;
+  if (!detectOn()) return `<button type="button" class="batch-link" id="det-go"><span class="label">Detect from photo</span><br><span class="mute">Fills in the type, a name, the pattern and, for known models, the brand. Downloads ${Detect.MB} MB once. Photos stay on this phone.</span></button>`;
   const j = S.det && S.det.f === S.files[0] ? S.det : null;
   if (!j) return "";
   if (j.state === "download") return `<div class="row"><span class="label" style="margin:0">Downloading detector ${Math.round(j.p * 100)}%</span></div>`;
   if (j.state === "work") return `<div class="row"><span class="label" style="margin:0">Detecting</span></div>`;
   if (j.state === "error") return `<div class="row"><span class="label">Detection did not work on this photo</span><button type="button" class="chip" id="det-retry">Try again</button></div>`;
-  const sure = j.r.kinds[0].p >= 0.5;
+  const sure = j.r.kinds[0].p >= 0.5, d = S.draft, b = j.r.brand;
+  const looks = b && b.list.length ? `<div class="row"><span class="label">${b.sure ? "Looks like" : "Could be"}</span>
+    <div class="chips">${b.list.map((it, i) => `<button type="button" class="chip" data-model="${i}" aria-pressed="${d.brand === it.brand && d.name === catName(it)}">${esc(it.brand)} ${esc(catName(it))}</button>`).join("")}</div></div>` : "";
   return `<div class="row"><span class="label">${sure ? "Detected" : "Best guess"}</span>
-    <div class="chips">${j.r.kinds.map((k, i) => `<button type="button" class="chip" data-kind="${i}" aria-pressed="${j.pick === i && S.draft.category === k.category}">${esc(k.name)}</button>`).join("")}</div>
-    <p class="mute" style="margin:8px 0 0">${sure ? "" : "Not sure. Tap the right one. "}Filled in from the photo. Change anything that is wrong.</p></div>`;
+    <div class="chips">${j.r.kinds.map((k, i) => `<button type="button" class="chip" data-kind="${i}" aria-pressed="${j.pick === i && d.category === k.category}">${esc(k.name)}</button>`).join("")}</div>
+    <p class="mute" style="margin:8px 0 0">${sure ? "" : "Not sure. Tap the right one. "}Filled in from the photo. Change anything that is wrong.</p></div>${looks}`;
 }
 function bindDetect() {
   const go = $("#det-go");
@@ -1268,6 +1380,11 @@ function bindDetect() {
   document.querySelectorAll("[data-kind]").forEach((b) => b.onclick = () => {
     const j = S.det; j.pick = +b.dataset.kind;
     applyDetect(S.draft, j.r.kinds[j.pick], j.r, true);
+    refreshAdd();
+  });
+  document.querySelectorAll("[data-model]").forEach((b) => b.onclick = () => {
+    applyModel(S.draft, S.det.r.brand.list[+b.dataset.model], true);
+    for (const k of ["brand", "name", "category"]) touched(S.draft).add(k);
     refreshAdd();
   });
 }
@@ -1309,7 +1426,7 @@ function viewBatch() {
     : r.det === "error" ? "Not detected" : r.auto && r.auto.p < 0.5 ? "Best guess" : "";
   $("#main").innerHTML = `<div class="form-wrap">
     ${B.rows.length ? "" : `<button class="pick" id="pick"><span class="label">Choose photos</span><span class="mute">Pick as many as you like. Each photo becomes its own piece.</span></button>`}
-    ${B.rows.length && !detectOn() ? `<button type="button" class="batch-link" id="det-go-b"><span class="label">Detect from photos</span><br><span class="mute">Fills in each piece's category and name. Downloads ${Detect.MB} MB once. Photos stay on this phone.</span></button>` : ""}
+    ${B.rows.length && !detectOn() ? `<button type="button" class="batch-link" id="det-go-b"><span class="label">Detect from photos</span><br><span class="mute">Fills in each piece's category and name, and the brand for known models. Downloads ${Detect.MB} MB once. Photos stay on this phone.</span></button>` : ""}
     <input type="file" id="bfile" accept="image/*" multiple hidden>
     <div class="row"><span class="label">Category for all</span><div class="chips">${CATEGORIES.map(([id, l]) => `<button type="button" class="chip" data-bcat="${id}" aria-pressed="${B.category === id}" ${B.busy ? "disabled" : ""}>${esc(l)}</button>`).join("")}</div></div>
     <div class="row"><span class="label">Brand for all</span><input class="field" id="b-brand" value="${esc(B.brand)}" placeholder="Optional" autocomplete="off" ${B.busy ? "disabled" : ""}></div>
@@ -1317,6 +1434,7 @@ function viewBatch() {
       <div class="shot"><img src="${r.url}" alt=""></div>
       <div><input class="field" id="b-name-${i}" data-bname="${i}" value="${esc(r.nameSet || !r.auto ? r.name : r.auto.name)}" placeholder="Name (optional)" autocomplete="off" ${lock(r)}>
         <select class="field" data-bc="${i}" aria-label="Category for photo ${i + 1}" ${lock(r)}>${opts(r)}</select>
+        ${r.auto && r.auto.brand && !B.brand.trim() ? `<div class="mute" style="font-size:12px;margin-top:6px">${esc(r.auto.brand)} (detected)</div>` : ""}
         ${state(r) ? `<div class="mute" style="font-size:12px;margin-top:6px">${state(r)}</div>` : ""}</div>
       ${r.saved ? `<span class="label mute">Saved</span>` : `<button class="x" data-brm="${i}" aria-label="Remove photo ${i + 1}" ${B.busy ? "disabled" : ""}>×</button>`}
     </div>`).join("")}
@@ -1338,6 +1456,7 @@ function viewBatch() {
   const go = $("#det-go-b");
   if (go) go.onclick = () => { pref.set("detect", true); viewBatch(); };
   detectBatch();
+  if (detectOn()) setTimeout(Detect.warm, 600);
 }
 // The person's own choice for this photo, then "Category for all", then detection.
 const batchCat = (B, r) => r.category || B.category || (r.auto ? r.auto.category : "");
@@ -1359,6 +1478,10 @@ async function detectBatch() {
         });
         const k = res.kinds[0];
         r.auto = { category: k.category, layer: k.layer, name: detName(k, res.color), pattern: res.pattern.p >= PATTERN_SURE ? res.pattern.id : "", p: k.p };
+        // A clear match to a known model gives brand, name, category and layer.
+        const m = res.brand && res.brand.sure;
+        if (m) Object.assign(r.auto, { category: m.category, layer: m.layer, name: catName(m), brand: m.brand, p: 1 });
+        else if (res.brand && res.brand.brand) r.auto.brand = res.brand.brand;
         r.det = "done";
       } catch { r.det = "error"; }
       paint();
@@ -1381,7 +1504,8 @@ async function saveBatch() {
       const images = await uploadPhotos([r.file], "front");
       const name = (r.nameSet || !a ? r.name : a.name).trim() || `${catLabel(cat)} ${(count[cat] || 0) + 1}`;
       // The detected layer only fits the detected category.
-      const rec = cleanRecord({ name, category: cat, brand: B.brand, status: "owned", pattern: a && a.pattern, layer: a && a.category === cat ? a.layer : "" });
+      // "Brand for all" wins over a detected brand.
+      const rec = cleanRecord({ name, category: cat, brand: B.brand.trim() || (a && a.brand) || "", status: "owned", pattern: a && a.pattern, layer: a && a.category === cat ? a.layer : "" });
       if (images[0]) { rec.color = images[0].color; rec.colorFamily = family(rec.color); }
       const now = Date.now();
       await S.db.collection("garments").doc(newId()).set({ ...rec, images, fav: false, deleted: false, createdAt: now, updatedAt: now });
@@ -2263,10 +2387,28 @@ const OnDevice = (() => {
       return o;
     })().catch((e) => { ortP = null; throw e; }));
   }
-  async function session(url, cacheName, size, onProgress) {
+  // With a graphics chip the browser can use (WebGPU), Detect runs there: about
+  // 7 s down to 1.5 s a photo on a 2016 laptop, same output (cosine 0.9999999).
+  // Studio's cutout model uses an operation WebGPU cannot run yet, so it stays on
+  // the processor worker above.
+  let gpuP = null;
+  function gpuOrt() {
+    return gpuP || (gpuP = (async () => {
+      if (!navigator.gpu || !(await navigator.gpu.requestAdapter().catch(() => null))) return null;
+      const o = await import(ORT + "ort.webgpu.min.mjs");
+      o.env.wasm.wasmPaths = ORT;
+      return o;
+    })().catch(() => null));
+  }
+  async function session(url, cacheName, size, onProgress, useGpu) {
+    const b = await bytes(url, cacheName, size, onProgress);
+    const g = useGpu && (await gpuOrt());
+    if (g) {
+      const s = await g.InferenceSession.create(b, { executionProviders: ["webgpu"] }).catch(() => null);
+      if (s) return { ort: g, s };
+    }
     const o = await ort();
-    const s = await o.InferenceSession.create(await bytes(url, cacheName, size, onProgress), { executionProviders: ["wasm"] });
-    return { ort: o, s };
+    return { ort: o, s: await o.InferenceSession.create(b, { executionProviders: ["wasm"] }) };
   }
   // A photo as something a canvas can draw, upright.
   async function source(blob) {
@@ -2356,15 +2498,75 @@ const Studio = (() => {
 // fixed list of kinds and patterns (models/detect-labels.json), so the phone only
 // runs the image half: one download, kept in the browser cache. Photos never
 // leave the phone.
+// Size of models/catalog.json and catalog.bin together, for the one-time download note.
+const CATALOG_MB = 7;
 const Detect = (() => {
   // FORMAT matches "format" inside detect-labels.json. Raise both when the file
   // changes: the cache key changes with it, and an older copy of the app that
   // meets a newer file reports an error instead of guessing from data it misreads.
   const MODEL = "models/fashion-siglip-vision.onnx", FORMAT = 2, LABELS = "models/detect-labels.json?" + FORMAT, CACHE = "detect-model-1";
-  const MB = 61, N = 224;
-  let sessP = null, labP = null;
-  function session(onProgress) {
-    return sessP || (sessP = OnDevice.session(MODEL, CACHE, MB * 1e6, onProgress).catch((e) => { sessP = null; throw e; }));
+  // The brand catalog (tools/detect/CATALOG-FORMAT.md): names for suggestions while
+  // typing, and one vector per model, a photo fingerprint or a text vector.
+  const CAT_FORMAT = 1, CAT_JSON = "models/catalog.json?" + CAT_FORMAT, CAT_BIN = "models/catalog.bin?" + CAT_FORMAT;
+  const MB = 61 + CATALOG_MB, N = 224;
+  let sessP = null, labP = null, namesP = null, vecP = null, warmP = null, onDl = null;
+  // Whoever is waiting sees the download, even if a warm-up started it.
+  function session() {
+    return sessP || (sessP = OnDevice.session(MODEL, CACHE, 61e6, (p) => onDl && onDl(p), true).catch((e) => { sessP = null; throw e; }));
+  }
+  function names() {
+    return namesP || (namesP = (async () => {
+      const j = JSON.parse(new TextDecoder().decode(await OnDevice.bytes(CAT_JSON, CACHE, 6e5)));
+      if (j.format !== CAT_FORMAT) throw new Error("catalog");
+      const kinds = j.kinds.map(([kind, category, layer, noun]) => ({ kind, category, layer, noun }));
+      const items = j.items.map(([b, model, k, nick, src], i) => ({ i, brand: j.brands[b], model, ...kinds[k], nick: nick || [], src }));
+      return { brands: j.brands, items, sure: j.sure, show: j.show, dim: j.dim };
+    })().catch((e) => { namesP = null; throw e; }));
+  }
+  function vectors() {
+    return vecP || (vecP = (async () => {
+      const C = await names(), n = C.items.length, D = C.dim;
+      const buf = await OnDevice.bytes(CAT_BIN, CACHE, n * (D + 4));
+      if (buf.byteLength !== n * (D + 4)) throw new Error("catalog");
+      return { C, q: new Int8Array(buf, 0, n * D), scale: new Float32Array(buf, n * D, n) };
+    })().catch((e) => { vecP = null; throw e; }));
+  }
+  // Brand and model, among the categories the photo most likely is. Photo
+  // fingerprints and text vectors score on different scales, so each is ranked on
+  // its own. margin: best score minus the best other brand and model. Only a photo
+  // match with margin "sure" is filled in; below "show" a source suggests nothing.
+  function matchModel(e, V, cats) {
+    const { C, q, scale } = V, D = C.dim, by = { p: [], t: [] };
+    for (const it of C.items) {
+      if (!cats.has(it.category)) continue;
+      const o = it.i * D; let s = 0;
+      for (let k = 0; k < D; k++) s += e[k] * q[o + k];
+      by[it.src].push({ it, s: s * scale[it.i] });
+    }
+    const key = (x) => (x.it.brand + "|" + x.it.model).toLowerCase();
+    let sure = null, brand = ""; const list = [];
+    for (const src of ["p", "t"]) {
+      const l = by[src].sort((a, b) => b.s - a.s);
+      if (!l.length) continue;
+      const other = l.find((x) => key(x) !== key(l[0])), margin = other ? l[0].s - other.s : 1;
+      // Near-twins of one brand (Chuck 70, Chuck 70 Hi) can leave the model unsure
+      // while the brand is clear: measured against the best other brand.
+      const otherB = l.find((x) => x.it.brand !== l[0].it.brand), marginB = otherB ? l[0].s - otherB.s : 1;
+      if (marginB < C.show[src]) continue;
+      if (!sure && margin >= C.sure[src]) sure = l[0].it;
+      if (!brand && marginB >= C.sure[src]) brand = l[0].it.brand;
+      // The best few from this source, for the person to pick from.
+      for (const x of l.slice(0, 6)) if (list.length < 3 && !list.some((y) => key({ it: y }) === key(x))) list.push(x.it);
+    }
+    return { sure, brand, list };
+  }
+  // Load the model, labels and catalog, and run it once on a blank image, so the
+  // first real photo answers at once. Started when Add piece or Batch add opens.
+  function warm() {
+    return warmP || (warmP = (async () => {
+      const [{ ort, s }] = await Promise.all([session(), labels(), vectors()]);
+      await s.run({ [s.inputNames[0]]: new ort.Tensor("float32", new Float32Array(3 * N * N), [1, 3, N, N]) });
+    })().catch(() => { warmP = null; }));
   }
   function labels() {
     return labP || (labP = (async () => {
@@ -2387,7 +2589,8 @@ const Detect = (() => {
   // onStep("download", 0..1) the first time, then onStep("work").
   // Returns { kinds: best three, pattern, color }.
   async function run(blob, onStep = () => {}) {
-    const [{ ort, s }, L] = await Promise.all([session((p) => onStep("download", p)), labels()]);
+    onDl = (p) => onStep("download", p);
+    const [{ ort, s }, L, V] = await Promise.all([session(), labels(), vectors().catch(() => null)]).finally(() => (onDl = null));
     onStep("work");
     const src = await OnDevice.source(blob);
     // The model sees the whole photo squeezed to 224 x 224, as in its training.
@@ -2405,9 +2608,12 @@ const Detect = (() => {
     const out = await s.run({ [s.inputNames[0]]: new ort.Tensor("float32", input, [1, 3, N, N]) });
     const raw = (out.image_embeds || out[s.outputNames[0]]).data;
     const n = Math.hypot(...raw), e = Float32Array.from(raw, (v) => v / n);
-    return { kinds: rank(e, L.kinds).slice(0, 3), pattern: rank(e, L.patterns)[0], color: photoColour(src) };
+    const kinds = rank(e, L.kinds).slice(0, 3);
+    // Without the catalog (an older cache, a failed download) detection still works.
+    const brand = V ? matchModel(e, V, new Set(kinds.map((k) => k.category))) : null;
+    return { kinds, pattern: rank(e, L.patterns)[0], color: photoColour(src), brand };
   }
-  return { run, MB };
+  return { run, warm, names, MB };
 })();
 
 // ---------- Studio by default ----------

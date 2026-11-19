@@ -38,6 +38,18 @@ self.addEventListener("fetch", (e) => {
     }));
     return;
   }
+  // The model runtime (onnxruntime-web, a fixed version): kept after first use, so
+  // Detect and Studio start without the network. Its own cache outlives app updates.
+  if (url.hostname === "cdn.jsdelivr.net" && url.pathname.startsWith("/npm/onnxruntime-web@")) {
+    e.respondWith(caches.open("ort-" + url.pathname.split("/")[2]).then(async (c) => {
+      const hit = await c.match(req);
+      if (hit) return hit;
+      const r = await fetch(req);
+      if (r.ok) c.put(req, r.clone());
+      return r;
+    }));
+    return;
+  }
   if (url.origin === location.origin) {
     e.respondWith(caches.match(req).then((r) => r || fetch(req)));
   }
