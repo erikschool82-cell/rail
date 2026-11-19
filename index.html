@@ -221,6 +221,20 @@ textarea.field { min-height: 72px; resize: vertical; }
 .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
 .stats > div, .stats > a { background: var(--paper); padding: 18px 16px; }
 .stats .v { font-size: 24px; line-height: 28px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.stats .v .mute { font-size: 15px; }
+.stats .v .sub { font-size: 13px; margin-left: 8px; }
+.sec-h { padding-block: 14px; border-bottom: 1px solid var(--line); }
+.sec-note { margin: 0; padding-block: 12px; border-bottom: 1px solid var(--line); }
+.bars .bn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Wears per month on a piece: twelve columns, oldest on the left */
+.wear-strip { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; height: 40px; margin-top: 18px; }
+.wear-strip span { display: flex; align-items: flex-end; border-bottom: 1px solid var(--line); }
+.wear-strip i { display: block; width: 100%; background: var(--ink); }
+.wear-axis { display: flex; justify-content: space-between; font-size: 11px; line-height: 14px; margin-top: 6px; }
+.price-check { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; font-size: 13px; }
+.price-check span { margin-right: 4px; }
+.fit-worn { display: block; margin: 0 16px 14px; }
+.fit-worn:disabled { color: var(--mute); text-decoration: none; }
 .bars li { display: grid; grid-template-columns: 112px 1fr 28px; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); }
 .bars { list-style: none; margin: 0; padding: 0; }
 .bars .t { height: 3px; background: var(--line); }
@@ -362,22 +376,22 @@ const FAMILY_HEX = { black: "#111", charcoal: "#3a3a3a", grey: "#9a9a9a", white:
 // Demo pieces for trying RAIL out. Photos in demo/ (Unsplash License, see demo/CREDITS.txt).
 // Every demo piece carries the tag "demo" so Profile can remove them all at once.
 const DEMO = [
-  { name: "Leather biker jacket", brand: "Schott", category: "outerwear", size: "M", color: "#141414", material: "Cowhide leather", fit: "regular", silhouette: "cropped", layer: "outer", pattern: "solid", formality: 2, price: 690, seasons: ["spring", "autumn"], styles: ["classic", "streetwear"] },
-  { name: "Denim trucker jacket", brand: "Lee", category: "outerwear", size: "M", color: "#2a3f63", material: "Denim, corduroy collar", fit: "regular", silhouette: "boxy", layer: "outer", pattern: "solid", formality: 2, price: 120, seasons: ["spring", "autumn"], styles: ["workwear", "casual"] },
-  { name: "Navy wool blazer", brand: "Lardini", category: "outerwear", size: "50", color: "#1d2a44", material: "Wool", fit: "slim", silhouette: "tailored", layer: "outer", pattern: "solid", formality: 4, price: 850, seasons: ["autumn", "winter", "spring"], styles: ["tailored", "classic"] },
-  { name: "Military overshirt", brand: "Vintage", category: "shirts", size: "L", color: "#4c5a3a", material: "Cotton twill", fit: "relaxed", silhouette: "boxy", layer: "mid", pattern: "solid", formality: 2, price: 60, seasons: ["spring", "autumn"], styles: ["workwear", "casual"] },
-  { name: "White oxford shirt", brand: "Comme des Garçons Shirt", category: "shirts", size: "M", color: "#f4f4f2", material: "Cotton oxford", fit: "regular", silhouette: "straight", layer: "base", pattern: "solid", formality: 3, price: 210, seasons: ["spring", "summer", "autumn"], styles: ["minimalist", "classic"] },
-  { name: "Heavyweight white tee", brand: "Lady White Co.", category: "tops", size: "M", color: "#f7f7f5", material: "Cotton jersey", fit: "regular", silhouette: "boxy", layer: "base", pattern: "solid", formality: 1, price: 75, seasons: ["spring", "summer"], styles: ["minimalist", "casual"] },
-  { name: "Heather grey tee", brand: "Sunspel", category: "tops", size: "M", color: "#9aa3ad", material: "Cotton", fit: "slim", silhouette: "straight", layer: "base", pattern: "solid", formality: 1, price: 80, seasons: ["spring", "summer"], styles: ["minimalist", "casual"] },
-  { name: "White hoodie", brand: "Our Legacy", category: "tops", size: "L", color: "#f2f2f0", material: "Cotton fleece", fit: "relaxed", silhouette: "boxy", layer: "mid", pattern: "solid", formality: 1, price: 180, seasons: ["autumn", "winter", "spring"], styles: ["streetwear", "casual"] },
-  { name: "Chunky knit jumper", brand: "Margaret Howell", category: "knitwear", size: "M", color: "#ece6da", material: "Wool", fit: "relaxed", silhouette: "boxy", layer: "mid", pattern: "texture", formality: 2, price: 320, seasons: ["autumn", "winter"], styles: ["minimalist", "classic"] },
-  { name: "Mid wash jeans", brand: "Levi's Vintage Clothing", category: "trousers", size: "32/32", color: "#4a6a94", material: "Selvedge denim", fit: "regular", silhouette: "straight", layer: "base", pattern: "solid", formality: 1, price: 230, seasons: ["spring", "autumn", "winter"], styles: ["classic", "casual"] },
-  { name: "Raw indigo jeans", brand: "A.P.C.", category: "trousers", size: "31", color: "#24324f", material: "Raw denim", fit: "slim", silhouette: "tapered", layer: "base", pattern: "solid", formality: 2, price: 210, seasons: ["autumn", "winter", "spring"], styles: ["minimalist", "classic"] },
-  { name: "Side-zip ankle boots", brand: "Ann Demeulemeester", category: "shoes", size: "43", color: "#151515", material: "Calf leather", formality: 3, price: 780, seasons: ["autumn", "winter"], styles: ["avant-garde", "minimalist"] },
-  { name: "Lace-up work boots", brand: "Red Wing", category: "shoes", size: "43", color: "#3b2a20", material: "Leather", formality: 2, price: 340, seasons: ["autumn", "winter"], styles: ["workwear", "classic"] },
-  { name: "White leather sneakers", brand: "Puma", category: "shoes", size: "43", color: "#f5f5f5", material: "Leather", formality: 1, price: 90, seasons: ["spring", "summer", "autumn"], styles: ["minimalist", "casual"] },
-  { name: "Woven leather tote", brand: "Bottega Veneta", category: "accessories", size: "One size", color: "#9a5530", material: "Intrecciato leather", formality: 3, price: 2900, seasons: ["spring", "summer", "autumn"], styles: ["classic", "contemporary"] },
-  { name: "Grey leather satchel", brand: "Cambridge Satchel", category: "accessories", size: "One size", color: "#8a8a86", material: "Leather", formality: 3, price: 160, seasons: ["spring", "autumn", "winter"], styles: ["classic"] },
+  { name: "Leather biker jacket", brand: "Schott", category: "outerwear", size: "M", color: "#141414", material: "Cowhide leather", fit: "regular", silhouette: "cropped", layer: "outer", pattern: "solid", formality: 2, price: 690, value: 520, seasons: ["spring", "autumn"], styles: ["classic", "streetwear"] },
+  { name: "Denim trucker jacket", brand: "Lee", category: "outerwear", size: "M", color: "#2a3f63", material: "Denim, corduroy collar", fit: "regular", silhouette: "boxy", layer: "outer", pattern: "solid", formality: 2, price: 120, value: 85, seasons: ["spring", "autumn"], styles: ["workwear", "casual"] },
+  { name: "Navy wool blazer", brand: "Lardini", category: "outerwear", size: "50", color: "#1d2a44", material: "Wool", fit: "slim", silhouette: "tailored", layer: "outer", pattern: "solid", formality: 4, price: 850, value: 340, seasons: ["autumn", "winter", "spring"], styles: ["tailored", "classic"] },
+  { name: "Military overshirt", brand: "Vintage", category: "shirts", size: "L", color: "#4c5a3a", material: "Cotton twill", fit: "relaxed", silhouette: "boxy", layer: "mid", pattern: "solid", formality: 2, price: 60, value: 90, seasons: ["spring", "autumn"], styles: ["workwear", "casual"] },
+  { name: "White oxford shirt", brand: "Comme des Garçons Shirt", category: "shirts", size: "M", color: "#f4f4f2", material: "Cotton oxford", fit: "regular", silhouette: "straight", layer: "base", pattern: "solid", formality: 3, price: 210, value: 140, seasons: ["spring", "summer", "autumn"], styles: ["minimalist", "classic"] },
+  { name: "Heavyweight white tee", brand: "Lady White Co.", category: "tops", size: "M", color: "#f7f7f5", material: "Cotton jersey", fit: "regular", silhouette: "boxy", layer: "base", pattern: "solid", formality: 1, price: 75, value: 50, seasons: ["spring", "summer"], styles: ["minimalist", "casual"] },
+  { name: "Heather grey tee", brand: "Sunspel", category: "tops", size: "M", color: "#9aa3ad", material: "Cotton", fit: "slim", silhouette: "straight", layer: "base", pattern: "solid", formality: 1, price: 80, value: 35, seasons: ["spring", "summer"], styles: ["minimalist", "casual"] },
+  { name: "White hoodie", brand: "Our Legacy", category: "tops", size: "L", color: "#f2f2f0", material: "Cotton fleece", fit: "relaxed", silhouette: "boxy", layer: "mid", pattern: "solid", formality: 1, price: 180, value: 120, seasons: ["autumn", "winter", "spring"], styles: ["streetwear", "casual"] },
+  { name: "Chunky knit jumper", brand: "Margaret Howell", category: "knitwear", size: "M", color: "#ece6da", material: "Wool", fit: "relaxed", silhouette: "boxy", layer: "mid", pattern: "texture", formality: 2, price: 320, value: 190, seasons: ["autumn", "winter"], styles: ["minimalist", "classic"] },
+  { name: "Mid wash jeans", brand: "Levi's Vintage Clothing", category: "trousers", size: "32/32", color: "#4a6a94", material: "Selvedge denim", fit: "regular", silhouette: "straight", layer: "base", pattern: "solid", formality: 1, price: 230, value: 170, seasons: ["spring", "autumn", "winter"], styles: ["classic", "casual"] },
+  { name: "Raw indigo jeans", brand: "A.P.C.", category: "trousers", size: "31", color: "#24324f", material: "Raw denim", fit: "slim", silhouette: "tapered", layer: "base", pattern: "solid", formality: 2, price: 210, value: 130, seasons: ["autumn", "winter", "spring"], styles: ["minimalist", "classic"] },
+  { name: "Side-zip ankle boots", brand: "Ann Demeulemeester", category: "shoes", size: "43", color: "#151515", material: "Calf leather", formality: 3, price: 780, value: 560, seasons: ["autumn", "winter"], styles: ["avant-garde", "minimalist"] },
+  { name: "Lace-up work boots", brand: "Red Wing", category: "shoes", size: "43", color: "#3b2a20", material: "Leather", formality: 2, price: 340, value: 260, seasons: ["autumn", "winter"], styles: ["workwear", "classic"] },
+  { name: "White leather sneakers", brand: "Puma", category: "shoes", size: "43", color: "#f5f5f5", material: "Leather", formality: 1, price: 90, value: 40, seasons: ["spring", "summer", "autumn"], styles: ["minimalist", "casual"] },
+  { name: "Woven leather tote", brand: "Bottega Veneta", category: "accessories", size: "One size", color: "#9a5530", material: "Intrecciato leather", formality: 3, price: 2900, value: 2100, seasons: ["spring", "summer", "autumn"], styles: ["classic", "contemporary"] },
+  { name: "Grey leather satchel", brand: "Cambridge Satchel", category: "accessories", size: "One size", color: "#8a8a86", material: "Leather", formality: 3, price: 160, value: 90, seasons: ["spring", "autumn", "winter"], styles: ["classic"] },
 ].map((d, i) => ({ ...d, photo: "demo/" + String(i + 1).padStart(2, "0") + ".jpg", tags: ["demo"], notes: "Demo piece. Remove all demo pieces in Profile." }));
 const isDemo = (g) => (g.tags || []).includes("demo");
 // Next demo not yet in the wardrobe, so repeated taps give different pieces.
@@ -656,7 +670,7 @@ const Outfit = (() => {
 
 // ---------- Version ----------
 // Raised together with VERSION in sw.js on every release.
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "1.10.0";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 function applyUpdate() {
@@ -988,6 +1002,7 @@ const SLICE = {
   tag: { title: (v) => "#" + v, has: (g, v) => (g.tags || []).includes(v) },
   fav: { title: () => "Favourites", has: (g) => !!g.fav },
   status: { title: (v) => (STATUSES.find((x) => x[0] === v) || [v, cap1(v)])[1], has: (g, v) => (g.status || "owned") === v, any: true },
+  wear: { title: () => "Never worn", has: (g) => !wears(g).length },
 };
 const sliceHref = (key, val) => `#in-${key}-${encodeURIComponent(val)}`;
 // Which status a slice shows: its own pick, else owned, else whatever has pieces.
@@ -1103,7 +1118,8 @@ function fieldsHTML(d, full) {
       + row("Style", many("styles", STYLES)) + row("Formality", one("formality", [1, 2, 3, 4, 5].map((n) => [String(n), FORMALITY[n]]), null, true))
       + row("Layer", one("layer", LAYERS)) + row("Pattern", one("pattern", PATTERNS))
       + `<div class="two">${row("Material", inp("material", "Virgin wool"))}${row("Collection", inp("collection", "FW19"))}</div>`
-      + `<div class="two">${row("Price", inp("price", "", `inputmode="decimal"`))}${row("Bought", `<input class="field" type="date" data-f="bought" id="f-bought" value="${esc(s("bought"))}">`)}</div>`
+      + `<div class="two">${row("Paid", inp("price", "", `inputmode="decimal"`))}${row("Worth now", inp("value", "Resale today", `inputmode="decimal"`))}</div>`
+      + row("Bought", `<input class="field" type="date" data-f="bought" id="f-bought" value="${esc(s("bought"))}">`)
       + row("Tags", `<input class="field" data-f="tagsText" id="f-tags" value="${esc(arr("tags").join(", "))}" placeholder="rotation, travel" autocomplete="off">`)
       + row("Notes", `<textarea class="field" data-f="notes" id="f-notes">${esc(s("notes"))}</textarea>`);
   }
@@ -1141,6 +1157,9 @@ function cleanRecord(d) {
   }
   out.formality = d.formality ? Number(d.formality) : null;
   out.price = d.price && !isNaN(parseFloat(d.price)) ? parseFloat(d.price) : null;
+  out.value = d.value && !isNaN(parseFloat(d.value)) ? parseFloat(d.value) : null;
+  // When the value was set; the item page keeps the old date if the value did not change.
+  out.valuedAt = out.value != null ? dayKey() : null;
   for (const k of ["seasons", "styles", "tags"]) out[k] = Array.isArray(d[k]) ? d[k] : [];
   out.colorFamily = family(out.color);
   out.status = out.status || "owned";
@@ -1429,6 +1448,31 @@ const ICON = {
 };
 const fmtDate = (v) => { const d = new Date(v); return isNaN(d) ? String(v) : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); };
 const listText = (a) => (a || []).join(", ");
+// Value and wear ---------------------------------------------------------------
+// Money is a plain number in whatever currency the person uses; RAIL stores none.
+const money = (n) => Number(n).toLocaleString("en-GB", { maximumFractionDigits: 2 });
+const signed = (n) => (n > 0 ? "+" : n < 0 ? "−" : "") + money(Math.abs(n));
+// A wear is a local calendar day, "2026-11-19". Read back at noon so no time zone shifts it.
+const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const fmtDay = (k) => fmtDate(k + "T12:00");
+const wears = (g) => (Array.isArray(g.wears) ? g.wears : []);
+const wornToday = (g) => wears(g).includes(dayKey());
+const withWear = (g, day) => [...new Set([...wears(g), day])].sort();
+const costPerWear = (g) => (g.price != null && wears(g).length ? g.price / wears(g).length : null);
+const PRICE_CHECK = [["Grailed", "https://www.grailed.com/shop?query="], ["eBay sold", "https://www.ebay.com/sch/i.html?LH_Sold=1&LH_Complete=1&_nkw="]];
+// Wears per month over the last 12 months, oldest first.
+function wearStrip(g) {
+  const now = new Date(), w = wears(g), months = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1), k = dayKey(d).slice(0, 7);
+    months.push([d.toLocaleDateString("en-GB", { month: "short", year: "numeric" }), w.filter((x) => x.startsWith(k)).length]);
+  }
+  const max = Math.max(1, ...months.map((m) => m[1]));
+  const said = months.filter((m) => m[1]).map(([l, n]) => `${l}: ${n}`).join(", ");
+  return `<div class="wear-strip" role="img" aria-label="Wears per month over the last 12 months. ${esc(said)}">${months.map(([l, n]) =>
+    `<span title="${esc(l)}: ${n}"><i style="height:${n ? Math.max(10, (n / max) * 100) : 0}%"></i></span>`).join("")}</div>
+    <div class="wear-axis mute"><span>${esc(months[0][0])}</span><span>This month</span></div>`;
+}
 // Removed photos still on this device, refreshed whenever the item page draws.
 let removedCache = [];
 async function refreshRemoved(id) {
@@ -1470,9 +1514,26 @@ function viewItem({ id }) {
   const details = [
     spec("Category", g.category ? to("category", g.category, catLabel(g.category)) : null, true), spec("Size", g.size),
     spec("Colour", g.color ? `<span class="swatch" style="background:${esc(g.color)}"></span>${g.colorFamily ? `<a class="cap1" style="display:inline-block" href="${sliceHref("color", g.colorFamily)}">${esc(g.colorFamily)}</a>` : ""}` : null, true),
-    spec("Material", g.material), spec("Collection", g.collection),
-    spec("Price", g.price != null ? String(g.price) : null), spec("Bought", g.bought ? fmtDate(g.bought) : null),
+    spec("Material", g.material), spec("Collection", g.collection), spec("Bought", g.bought ? fmtDate(g.bought) : null),
   ].join("");
+  const ws = wears(g), cpw = costPerWear(g), owned = (g.status || "owned") === "owned";
+  const change = g.price != null && g.value != null ? g.value - g.price : null;
+  const valueSpecs = [
+    spec("Paid", g.price != null ? money(g.price) : null),
+    spec("Worth now", g.value != null ? `${money(g.value)}${g.valuedAt ? `<span class="mute"> · ${esc(fmtDay(g.valuedAt))}</span>` : ""}` : null, true),
+    spec("Change", change != null ? `${signed(change)}${g.price ? `<span class="mute"> · ${signed(Math.round((change / g.price) * 100))}%</span>` : ""}` : null, true),
+    spec("Worn", ws.length ? `${ws.length} time${ws.length > 1 ? "s" : ""}` : null),
+    spec("Last worn", ws.length ? fmtDay(ws[ws.length - 1]) : null),
+    spec("Cost per wear", cpw != null ? money(Math.round(cpw * 100) / 100) : null),
+  ].join("");
+  const valueAsk = g.price == null && g.value == null ? "Add what you paid and what it is worth" : g.price == null ? "Add what you paid" : g.value == null ? "Add what it is worth now" : "";
+  const pq = [g.brand, g.name].map((x) => (x || "").trim()).filter(Boolean).join(" ");
+  const valuePart = `<div class="part"><h2>Value and wear</h2>
+    ${valueSpecs ? `<dl class="specs">${valueSpecs}</dl>` : `<p class="mute" style="margin:0">What you paid, what it would sell for now, and how often you wear it.</p>`}
+    ${ws.length ? wearStrip(g) : ""}
+    ${valueAsk && S.canWrite ? `<button class="linkish" id="add-value">${valueAsk}</button>` : ""}
+    ${pq ? `<div class="price-check"><span class="mute">Check prices</span>${PRICE_CHECK.map(([l, u]) => `<a class="chip" href="${u + encodeURIComponent(pq)}" target="_blank" rel="noopener noreferrer">${l}</a>`).join("")}</div>` : ""}
+  </div>`;
   const styling = [
     spec("Season", tos("season", g.seasons), true), spec("Style", tos("style", g.styles), true), spec("Fit", g.fit), spec("Silhouette", g.silhouette),
     spec("Formality", g.formality ? FORMALITY[g.formality] : null), spec("Layer", g.layer), spec("Pattern", g.pattern),
@@ -1501,11 +1562,13 @@ function viewItem({ id }) {
       ${S.canWrite && !editing ? `<div class="acts">
         <button class="btn plain" id="fav" aria-pressed="${!!g.fav}"><span class="sq${g.fav ? " on" : ""}"></span>${g.fav ? "Favourite" : "Add to favourites"}</button>
         <button class="btn plain solid" id="edit">Edit details</button>
-        ${(g.status || "owned") !== "archived" ? `<button class="btn plain" id="around" style="grid-column:1 / -1">Build an outfit with this</button>` : ""}</div>` : `<div style="border-bottom:1px solid var(--line)"></div>`}
+        ${owned ? `<button class="btn plain" id="worn" aria-pressed="${wornToday(g)}"><span class="sq${wornToday(g) ? " on" : ""}"></span>${wornToday(g) ? "Worn today" : "Wore it today"}</button>` : ""}
+        ${(g.status || "owned") !== "archived" ? `<button class="btn plain" id="around"${owned ? "" : ` style="grid-column:1 / -1"`}>${owned ? "Build an outfit" : "Build an outfit with this"}</button>` : ""}</div>` : `<div style="border-bottom:1px solid var(--line)"></div>`}
       ${S.err ? `<div class="err">${esc(S.err)}</div>` : ""}
       ${editing ? `<div class="part" style="padding-bottom:0;border-bottom:0"><h2>Edit details</h2></div><div id="fields">${fieldsHTML(S.edit, true)}</div>
         <div class="actions"><button class="label" id="cancel">Cancel</button><button class="label solid" id="save" ${S.busy ? "disabled" : ""}>${S.busy ? "Saving" : "Save changes"}</button></div>`
       : `<div class="part"><h2>Details</h2><dl class="specs">${details}</dl></div>
+        ${valuePart}
         <div class="part"><h2>Styling</h2>${styling ? `<dl class="specs">${styling}</dl>` : `<p class="mute" style="margin:0">How it fits and when you wear it. Outfit ideas use this.</p>`}
           ${missing.length && S.canWrite ? `<button class="linkish" id="complete">${esc(missingText)}</button>` : ""}</div>
         ${(g.tags || []).length ? `<div class="part"><h2>Tags</h2><div class="chips">${g.tags.map((t) => `<a class="chip" href="${sliceHref("tag", t)}">${esc(t)}</a>`).join("")}</div></div>` : ""}
@@ -1529,14 +1592,19 @@ function viewItem({ id }) {
   refreshRemoved(id);
   $("#ph-menu")?.addEventListener("click", () => { S.sheet = "photo"; renderLayer(); });
   $("#fav")?.addEventListener("click", () => saveItem(g, { fav: !g.fav }, g.fav ? "Removed from favourites" : "Added to favourites"));
-  const startEdit = () => { S.edit = { ...g, formality: g.formality ? String(g.formality) : "", price: g.price != null ? String(g.price) : "" }; render(); };
+  const startEdit = () => { S.edit = { ...g, formality: g.formality ? String(g.formality) : "", price: g.price != null ? String(g.price) : "", value: g.value != null ? String(g.value) : "" }; render(); };
   $("#edit")?.addEventListener("click", startEdit);
+  $("#add-value")?.addEventListener("click", () => { startEdit(); requestAnimationFrame(() => $(g.price == null ? "#f-price" : "#f-value")?.focus()); });
+  $("#worn")?.addEventListener("click", () => {
+    const t = dayKey(), on = wornToday(g);
+    saveItem(g, { wears: on ? wears(g).filter((x) => x !== t) : withWear(g, t) }, on ? "Removed today's wear" : "Logged as worn today", true);
+  });
   $("#around")?.addEventListener("click", () => buildAround(g));
   $("#complete")?.addEventListener("click", startEdit);
   $("#dup")?.addEventListener("click", async () => {
     const nid = newId(), now = Date.now();
     const copy = JSON.parse(JSON.stringify(g)); delete copy.id;
-    try { await Undo.act("Duplicate", () => S.db.collection("garments").doc(nid).set({ ...copy, name: g.name + " (copy)", fav: false, createdAt: now, updatedAt: now })); toast("Duplicated"); location.hash = "item-" + nid; }
+    try { await Undo.act("Duplicate", () => S.db.collection("garments").doc(nid).set({ ...copy, name: g.name + " (copy)", fav: false, wears: [], createdAt: now, updatedAt: now })); toast("Duplicated"); location.hash = "item-" + nid; }
     catch { S.err = "Duplicating failed."; render(); }
   });
   $("#del")?.addEventListener("click", () => { S.confirmDel = true; render(); });
@@ -1550,7 +1618,11 @@ function viewItem({ id }) {
     const sync = () => { $("#save").disabled = !(S.edit.name || "").trim() || S.busy; };
     bindFields($("#fields"), S.edit, sync);
     $("#cancel").onclick = () => { S.edit = null; render(); };
-    $("#save").onclick = async () => { const rec = cleanRecord(S.edit); if (!rec.name) return; S.edit = null; await saveItem(g, rec, "Details saved"); };
+    $("#save").onclick = async () => {
+      const rec = cleanRecord(S.edit); if (!rec.name) return;
+      if (rec.value === (g.value ?? null)) delete rec.valuedAt;
+      S.edit = null; await saveItem(g, rec, "Details saved");
+    };
   }
   const f2 = $("#file2");
   $("#addimg")?.addEventListener("click", () => f2.click());
@@ -1647,7 +1719,26 @@ function viewProfile() {
   const byCat = CATEGORIES.map(([id, l]) => [l, owned.filter((g) => g.category === id).length, id]).filter((x) => x[1]);
   const max = Math.max(1, ...byCat.map((x) => x[1]));
   const byCol = Object.entries(owned.reduce((m, g) => (g.colorFamily && (m[g.colorFamily] = (m[g.colorFamily] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]);
+  // Value and wear across owned pieces. Change only counts pieces with both numbers.
+  const sum = (list, f) => list.reduce((n, g) => n + f(g), 0);
+  const priced = owned.filter((g) => g.price != null), valued = owned.filter((g) => g.value != null), both = valued.filter((g) => g.price != null);
+  const delta = sum(both, (g) => g.value - g.price), base = sum(both, (g) => g.price);
+  const never = owned.filter((g) => !wears(g).length).length;
+  const top = owned.filter((g) => wears(g).length).sort((a, b) => wears(b).length - wears(a).length || a.name.localeCompare(b.name)).slice(0, 5);
+  const topMax = Math.max(1, ...top.map((g) => wears(g).length));
+  const cell = (k, v, sub, href) => `<${href ? `a class="stat" href="${href}"` : "div"}><div class="label mute">${k}</div><div class="v">${v}${sub ? `<span class="sub mute">${sub}</span>` : ""}</div></${href ? "a" : "div"}>`;
+  const notSet = `<span class="mute">Not set</span>`;
+  const valueBlock = !owned.length ? "" : `<div class="label mute gut sec-h">Value and wear</div>
+    <div class="stats">
+      ${cell("Paid", priced.length ? money(sum(priced, (g) => g.price)) : notSet)}
+      ${cell("Worth now", valued.length ? money(sum(valued, (g) => g.value)) : notSet)}
+      ${cell("Change", both.length ? signed(delta) : notSet, both.length && base ? `${signed(Math.round((delta / base) * 100))}%` : "")}
+      ${cell("Never worn", never, "", never ? sliceHref("wear", "never") : "")}
+    </div>
+    ${valued.length < owned.length ? `<p class="mute gut sec-note">Worth now counts ${valued.length} of ${owned.length} piece${owned.length > 1 ? "s" : ""}. Add a value on each piece to complete it.</p>` : ""}
+    ${top.length ? `<div class="label mute gut sec-h">Most worn</div><ul class="bars">${top.map((g) => `<li><a href="#item-${esc(g.id)}"><span class="bn">${esc(g.name)}</span><span class="t"><i style="width:${(wears(g).length / topMax) * 100}%"></i></span><span class="c">${wears(g).length}</span></a></li>`).join("")}</ul>` : ""}`;
   $("#main").innerHTML = `<div class="stats">${stats.map(([k, v, href]) => v ? `<a class="stat" href="${href}"><div class="label mute">${k}</div><div class="v">${v}</div></a>` : `<div><div class="label mute">${k}</div><div class="v">${v}</div></div>`).join("")}</div>
+    ${valueBlock}
     <div class="label mute gut" style="padding-block:14px;border-bottom:1px solid var(--line)">By category</div>
     ${byCat.length ? `<ul class="bars">${byCat.map(([k, n, id]) => `<li><a href="${sliceHref("category", id)}"><span>${esc(k)}</span><span class="t"><i style="width:${(n / max) * 100}%"></i></span><span class="c">${n}</span></a></li>`).join("")}</ul>` : `<p class="mute gut" style="padding-block:14px;margin:0">Add pieces to see how your wardrobe is spread.</p>`}
     ${byCol.length ? `<div class="label mute gut" style="padding-block:14px;border-bottom:1px solid var(--line)">Palette</div>
@@ -1786,6 +1877,9 @@ function viewOutfits() {
   const sig = Outfit.sig(c), saved = S.outfits.filter((o) => !o.deleted).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   const isSaved = saved.some((o) => Outfit.sig(o.pieces || {}) === sig);
   const why = F.err || Outfit.explain(c, all);
+  // Wishlist pieces in the outfit are not worn, so only owned ones get a wear.
+  const wearable = Outfit.IDS.map((s) => byId(c[s])).filter((g) => g && (g.status || "owned") === "owned");
+  const wearToLog = wearable.filter((g) => !wornToday(g));
   $("#main").innerHTML = `<div class="fit-wrap">
     <section class="fit-gen">
       <div class="modes" role="group" aria-label="How to build">
@@ -1799,6 +1893,7 @@ function viewOutfits() {
       </div>
       ${adds.length ? `<div class="fit-adds gut">${adds.map((s) => `<button class="chip" data-pick="${s}">+ ${slotNoun(s)[0].toUpperCase() + slotNoun(s).slice(1)}</button>`).join("")}</div>` : ""}
       <p class="why gut${F.err ? " err-t" : ""}" aria-live="polite">${esc(why)}</p>
+      ${wearable.length ? `<button class="linkish fit-worn" id="fit-worn" ${wearToLog.length ? "" : "disabled"}>${wearToLog.length ? "Wore this outfit today" : "Worn today"}</button>` : ""}
       <div class="actions"><button class="label" id="fit-save" ${fitEmpty() || isSaved ? "disabled" : ""}>${isSaved ? "Saved" : "Save outfit"}</button><button class="label solid" id="fit-shuffle">Shuffle</button></div>
     </section>
     <section class="fit-saved">
@@ -1829,6 +1924,15 @@ function viewOutfits() {
   });
   M.querySelectorAll("[data-pick]").forEach((b) => b.onclick = () => { F.sheet = { slot: b.dataset.pick }; renderLayer(); });
   $("#fit-shuffle").onclick = () => { shuffleFit(); render(); };
+  $("#fit-worn")?.addEventListener("click", async () => {
+    if (!wearToLog.length) return;
+    const t = dayKey(), now = Date.now();
+    try {
+      await Undo.act("Outfit worn", async () => { for (const g of wearToLog) await S.db.collection("garments").doc(g.id).update({ wears: withWear(g, t), updatedAt: now }); });
+      toast(`Logged ${wearToLog.length} piece${wearToLog.length > 1 ? "s" : ""} as worn today`, true);
+    } catch { toast("Logging failed. Try again."); }
+    render();
+  });
   $("#fit-save").onclick = async () => {
     if (fitEmpty() || isSaved) return;
     const pieces = Object.fromEntries(Outfit.IDS.filter((s) => c[s]).map((s) => [s, c[s]])), now = Date.now();
