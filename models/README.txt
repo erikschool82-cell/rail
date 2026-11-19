@@ -10,3 +10,8 @@ detect-labels.json: the model's text half run once over RAIL's list of garment k
 ("a photo of a <kind>"), stored as 16-bit integers with one scale per vector. "format" must match
 FORMAT in index.html. Rebuilding it needs the text model and the build script; the kinds list lives
 in the "kinds" field (category, name, layer).
+
+catalog.json and catalog.bin: brand and model names (Farfetch product listing, brand and title
+columns only, plus tools/detect/extra-catalog.json) and one photo fingerprint per sneaker model
+(the mean image embedding of photos from the ipogorelov/sneakers set, MIT License). Built by
+tools/detect/build-vectors.mjs; the format is in tools/detect/CATALOG-FORMAT.md.

@@ -670,7 +670,7 @@ const Outfit = (() => {
 
 // ---------- Version ----------
 // Raised together with VERSION in sw.js on every release.
-const APP_VERSION = "1.10.0";
+const APP_VERSION = "1.11.0";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 function applyUpdate() {
@@ -2499,7 +2499,7 @@ const Studio = (() => {
 // runs the image half: one download, kept in the browser cache. Photos never
 // leave the phone.
 // Size of models/catalog.json and catalog.bin together, for the one-time download note.
-const CATALOG_MB = 7;
+const CATALOG_MB = 1;
 const Detect = (() => {
   // FORMAT matches "format" inside detect-labels.json. Raise both when the file
   // changes: the cache key changes with it, and an older copy of the app that
@@ -2525,7 +2525,8 @@ const Detect = (() => {
   }
   function vectors() {
     return vecP || (vecP = (async () => {
-      const C = await names(), n = C.items.length, D = C.dim;
+      // Only items with a vector have a row; they come first ("n" items are names only).
+      const C = await names(), n = C.items.filter((it) => it.src !== "n").length, D = C.dim;
       const buf = await OnDevice.bytes(CAT_BIN, CACHE, n * (D + 4));
       if (buf.byteLength !== n * (D + 4)) throw new Error("catalog");
       return { C, q: new Int8Array(buf, 0, n * D), scale: new Float32Array(buf, n * D, n) };
@@ -2535,10 +2536,16 @@ const Detect = (() => {
   // fingerprints and text vectors score on different scales, so each is ranked on
   // its own. margin: best score minus the best other brand and model. Only a photo
   // match with margin "sure" is filled in; below "show" a source suggests nothing.
-  function matchModel(e, V, cats) {
-    const { C, q, scale } = V, D = C.dim, by = { p: [], t: [] };
+  // Detected kind to catalog kinds, so a loafer photo is never matched to a sneaker.
+  const KIND_OF = { Trainers: ["sneakers"], Boots: ["boots"], Sandals: ["sandals", "slides"], Loafers: ["loafers"],
+    Heels: ["heels", "mules"], Derbies: ["derby shoes", "lace-up shoes"] };
+  function matchModel(e, V, cats, top) {
+    const { C, q, scale } = V, D = C.dim, by = { p: [], t: [] }, only = KIND_OF[top];
+    // Only sneakers have photos of most models, so only they are ever filled in.
+    // Boots, sandals and the rest get suggestions to pick from.
+    const fill = top === "Trainers";
     for (const it of C.items) {
-      if (!cats.has(it.category)) continue;
+      if (!by[it.src] || !cats.has(it.category) || (only && it.category === "shoes" && !only.includes(it.kind))) continue;
       const o = it.i * D; let s = 0;
       for (let k = 0; k < D; k++) s += e[k] * q[o + k];
       by[it.src].push({ it, s: s * scale[it.i] });
@@ -2553,8 +2560,8 @@ const Detect = (() => {
       // while the brand is clear: measured against the best other brand.
       const otherB = l.find((x) => x.it.brand !== l[0].it.brand), marginB = otherB ? l[0].s - otherB.s : 1;
       if (marginB < C.show[src]) continue;
-      if (!sure && margin >= C.sure[src]) sure = l[0].it;
-      if (!brand && marginB >= C.sure[src]) brand = l[0].it.brand;
+      if (fill && !sure && margin >= C.sure[src]) sure = l[0].it;
+      if (fill && !brand && marginB >= C.sure[src]) brand = l[0].it.brand;
       // The best few from this source, for the person to pick from.
       for (const x of l.slice(0, 6)) if (list.length < 3 && !list.some((y) => key({ it: y }) === key(x))) list.push(x.it);
     }
@@ -2610,7 +2617,7 @@ const Detect = (() => {
     const n = Math.hypot(...raw), e = Float32Array.from(raw, (v) => v / n);
     const kinds = rank(e, L.kinds).slice(0, 3);
     // Without the catalog (an older cache, a failed download) detection still works.
-    const brand = V ? matchModel(e, V, new Set(kinds.map((k) => k.category))) : null;
+    const brand = V ? matchModel(e, V, new Set(kinds.map((k) => k.category)), kinds[0].name) : null;
     return { kinds, pattern: rank(e, L.patterns)[0], color: photoColour(src), brand };
   }
   return { run, warm, names, MB };
