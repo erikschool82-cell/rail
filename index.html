@@ -219,13 +219,29 @@ textarea.field { min-height: 72px; resize: vertical; }
 
 /* Profile */
 .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
-.stats div { background: var(--paper); padding: 18px 16px; }
+.stats > div, .stats > a { background: var(--paper); padding: 18px 16px; }
 .stats .v { font-size: 24px; line-height: 28px; margin-top: 8px; font-variant-numeric: tabular-nums; }
 .bars li { display: grid; grid-template-columns: 112px 1fr 28px; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); }
 .bars { list-style: none; margin: 0; padding: 0; }
 .bars .t { height: 3px; background: var(--line); }
 .bars .t i { display: block; height: 100%; background: var(--ink); }
 .bars .c { text-align: right; font-variant-numeric: tabular-nums; color: var(--mute); }
+/* Everything that opens a slice of the wardrobe */
+a.stat, .bars a, a.seg { color: inherit; text-decoration: none; }
+a.stat { display: block; }
+.bars a { display: grid; grid-template-columns: 112px 1fr 28px 10px; gap: 12px; align-items: center; padding: 10px 16px; }
+.bars li:has(a) { display: block; padding: 0; }
+.bars a::after, a.stat .v::after { content: "›"; color: var(--mute); }
+a.stat .v::after { margin-left: 8px; font-size: 18px; vertical-align: 2px; }
+a.seg { display: block; }
+.palette a.seg:hover, .palette a.seg:focus-visible { box-shadow: inset 0 -4px 0 var(--ink); outline: none; }
+@media (hover: hover) { a.stat:hover, .bars a:hover { background: var(--well); } }
+a.stat:active, .bars a:active { background: var(--well); }
+.specs dd a, .head a.label { color: inherit; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; }
+.specs dd a:hover, .head a.label:hover { text-decoration-color: currentColor; }
+.top-row .back { display: block; line-height: var(--top); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; flex: 0 1 auto; }
+.slice-band { height: 6px; border-bottom: 1px solid var(--line); }
+.slice-note { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .status-note { padding: 10px 16px; border-bottom: 1px solid var(--line); }
 .update { position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--top)); z-index: 19; display: flex; align-items: center; gap: 12px;
   background: var(--ink); color: var(--paper); min-height: 44px; padding-block: 6px; }
@@ -640,7 +656,7 @@ const Outfit = (() => {
 
 // ---------- Version ----------
 // Raised together with VERSION in sw.js on every release.
-const APP_VERSION = "1.8.0";
+const APP_VERSION = "1.9.0";
 const newer = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 function applyUpdate() {
@@ -783,20 +799,66 @@ const byId = (id) => live().find((g) => g.id === id);
 function route() {
   const h = location.hash.slice(1) || "wardrobe";
   if (h.startsWith("item-")) return { v: "item", id: h.slice(5) };
-  return { v: ["wardrobe", "add", "batch", "lists", "boards", "outfits", "profile", "settings"].includes(h) ? h : "wardrobe" };
+  // A slice of the wardrobe: #in-category-outerwear, #in-color-black, #in-brand-COS, #in-fav-1
+  const sl = parseSlice(h);
+  if (sl) return { v: "slice", ...sl };
+  return { v: ["wardrobe", "add", "batch", "lists", "boards", "outfits", "profile", "settings", "brands"].includes(h) ? h : "wardrobe" };
 }
-window.addEventListener("hashchange", () => { S.edit = null; S.confirmDel = false; S.sheet = null; S.fit.sheet = null; S.slide = 0; S.err = ""; if (route().v === "add" && !S.draft) newDraft(); if (route().v !== "batch" && S.batch && !S.batch.busy) clearBatch(); render(); window.scrollTo(0, 0); });
+function parseSlice(h) {
+  const m = /^in-([a-z]+)-(.+)$/.exec(h);
+  if (!m || !SLICE[m[1]]) return null;
+  let val = m[2]; try { val = decodeURIComponent(val); } catch {}
+  return { key: m[1], val };
+}
+// The pages walked through, so Back names and returns to the page before, and a
+// piece walks the grid it was opened from. Stepping to the next piece replaces.
+const Nav = { stack: [location.hash.slice(1) || "wardrobe"], replacing: false };
+function trackNav() {
+  const h = location.hash.slice(1) || "wardrobe", s = Nav.stack;
+  if (Nav.replacing) { s[s.length - 1] = h; Nav.replacing = false; }
+  else if (s.length > 1 && s[s.length - 2] === h) s.pop();
+  else if (s[s.length - 1] !== h) s.push(h);
+}
+const backHash = () => (Nav.stack.length > 1 ? Nav.stack[Nav.stack.length - 2] : null);
+const swapTo = (h) => { Nav.replacing = true; location.replace("#" + h); };
+// The grid under the current page: the wardrobe or a slice of it.
+const gridHash = () => [...Nav.stack].reverse().find((h) => h === "wardrobe" || h.startsWith("in-")) || "wardrobe";
+// A back link to the page before, or to `home` when RAIL was opened here.
+function backLink(home, homeLabel) {
+  const b = backHash();
+  return `<a class="back label" href="#${esc(b || home)}" data-back style="text-decoration:none">${esc(b ? pageTitle(b) : homeLabel)}</a>`;
+}
+function bindBack() {
+  document.querySelectorAll("[data-back]").forEach((a) => a.onclick = (e) => { if (backHash() && a.getAttribute("href") === "#" + backHash()) { e.preventDefault(); history.back(); } });
+}
+// The section a piece or slice was reached from, lit in the bottom bar.
+function navRoot() {
+  for (const h of [...Nav.stack].reverse()) {
+    if (h === "wardrobe" || h === "outfits" || h === "lists" || h === "boards") return h;
+    if (h === "profile" || h === "brands" || h === "settings") return "profile";
+  }
+  return "wardrobe";
+}
+function pageTitle(h) {
+  if (h.startsWith("item-")) { const g = byId(h.slice(5)); return g ? g.name : "Piece"; }
+  const r = parseSlice(h);
+  if (r) return SLICE[r.key].title(r.val);
+  return { wardrobe: "Wardrobe", profile: "Profile", brands: "Brands", outfits: "Outfits", settings: "Settings" }[h] || "Back";
+}
+window.addEventListener("hashchange", () => {
+  trackNav(); S.edit = null; S.confirmDel = false; S.sheet = null; S.fit.sheet = null; S.slide = 0; S.err = ""; if (route().v === "add" && !S.draft) newDraft(); if (route().v !== "batch" && S.batch && !S.batch.busy) clearBatch(); render(); window.scrollTo(0, 0); });
 function newDraft(keep) { S.draft = { status: "owned", ...(keep || {}) }; S.files.forEach((f) => URL.revokeObjectURL(f.url)); S.files = []; S.det = null; S.more = false; S.err = ""; }
 
 // ---------- Render ----------
 function render() {
   const r = route();
   document.querySelectorAll("#nav a").forEach((a) => {
-    const on = a.dataset.v === r.v || (a.dataset.v === "wardrobe" && (r.v === "item" || r.v === "add" || r.v === "batch")) || (a.dataset.v === "profile" && r.v === "settings");
+    const on = a.dataset.v === r.v || (a.dataset.v === "wardrobe" && (r.v === "add" || r.v === "batch")) || (a.dataset.v === "profile" && (r.v === "settings" || r.v === "brands"))
+      || ((r.v === "item" || r.v === "slice") && a.dataset.v === navRoot());
     a.toggleAttribute("aria-current", false); if (on) a.setAttribute("aria-current", "page");
   });
   $("#fab").hidden = !(r.v === "wardrobe") || !S.canWrite || !S.db;
-  const v = { wardrobe: viewWardrobe, add: viewAdd, batch: viewBatch, item: viewItem, profile: viewProfile, settings: viewSettings, lists: viewSoon, boards: viewSoon, outfits: viewOutfits }[r.v];
+  const v = { wardrobe: viewWardrobe, add: viewAdd, batch: viewBatch, item: viewItem, slice: viewSlice, brands: viewBrands, profile: viewProfile, settings: viewSettings, lists: viewSoon, boards: viewSoon, outfits: viewOutfits }[r.v];
   v(r);
   renderLayer();
 }
@@ -827,6 +889,9 @@ function filtered() {
     const hay = [g.name, g.brand, catLabel(g.category), g.colorFamily, g.material, g.collection, g.notes, ...(g.tags || []), ...(g.styles || [])].filter(Boolean).join(" ").toLowerCase();
     return words.every((w) => hay.includes(w));
   });
+  return { pool, list: sortList(list) };
+}
+function sortList(list) {
   const by = (f) => (a, b) => f(a).localeCompare(f(b));
   const catIx = (g) => CATEGORIES.findIndex((c) => c[0] === g.category);
   list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -834,7 +899,7 @@ function filtered() {
   if (S.sort === "name") list.sort(by((g) => (g.name || "").toLowerCase()));
   if (S.sort === "brand") list.sort(by((g) => (g.brand || "~").toLowerCase()));
   if (S.sort === "category") list.sort((a, b) => catIx(a) - catIx(b));
-  return { pool, list };
+  return list;
 }
 const activeFilters = () => Object.values(S.sel).reduce((n, v) => n + v.length, 0) + (S.favOnly ? 1 : 0);
 
@@ -892,6 +957,10 @@ function renderGrid() {
     $("#clear2")?.addEventListener("click", clearFilters);
     return;
   }
+  gridInto(el, list);
+}
+// The wardrobe's grid of cards, for the wardrobe and for each slice of it.
+function gridInto(el, list) {
   const card = (g) => `<a class="card" href="#item-${esc(g.id)}"><div style="position:relative">${photo(g.images?.[0], S.mode === "archive" ? 0.8 : null)}${g.fav ? `<span class="fav-dot" aria-label="Favourite"></span>` : ""}</div>${caption(g)}</a>`;
   if (S.mode === "archive") { el.innerHTML = `<div class="archive">${list.map(card).join("")}</div>`; return; }
   const w = el.clientWidth || window.innerWidth;
@@ -903,7 +972,66 @@ function renderGrid() {
   }
   el.innerHTML = `<div class="masonry">${colsArr.map((c) => `<div class="col">${c.map(card).join("")}</div>`).join("")}</div>`;
 }
-let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => route().v === "wardrobe" && renderGrid(), 150); });
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { const v = route().v; if (v === "wardrobe") renderGrid(); if (v === "slice") renderSliceGrid(); }, 150); });
+
+// Slices of the wardrobe -------------------------------------------------------
+// One page per category, colour, brand, season, style, tag, favourites or status,
+// reached from Profile and from a piece's details. Same grid as the wardrobe,
+// without touching the wardrobe's own filters. Owned pieces unless asked.
+const cap1 = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
+const SLICE = {
+  category: { title: catLabel, has: (g, v) => g.category === v },
+  color: { title: cap1, has: (g, v) => g.colorFamily === v },
+  brand: { title: (v) => v, has: (g, v) => (g.brand || "").trim().toLowerCase() === v.toLowerCase() },
+  season: { title: cap1, has: (g, v) => (g.seasons || []).includes(v) },
+  style: { title: cap1, has: (g, v) => (g.styles || []).includes(v) },
+  tag: { title: (v) => "#" + v, has: (g, v) => (g.tags || []).includes(v) },
+  fav: { title: () => "Favourites", has: (g) => !!g.fav },
+  status: { title: (v) => (STATUSES.find((x) => x[0] === v) || [v, cap1(v)])[1], has: (g, v) => (g.status || "owned") === v, any: true },
+};
+const sliceHref = (key, val) => `#in-${key}-${encodeURIComponent(val)}`;
+// Which status a slice shows: its own pick, else owned, else whatever has pieces.
+S.sliceStatus = {};
+function sliceList({ key, val }) {
+  const sl = SLICE[key], match = live().filter((g) => sl.has(g, val));
+  const counts = STATUSES.map(([id, l]) => [id, l, match.filter((g) => (g.status || "owned") === id).length]);
+  if (sl.any) return { list: sortList(match), counts: null, status: null };
+  const id = key + ":" + val;
+  let status = S.sliceStatus[id];
+  if (!counts.some((c) => c[0] === status && c[2])) status = (counts.find((c) => c[2]) || counts[0])[0];
+  return { list: sortList(match.filter((g) => (g.status || "owned") === status)), counts, status };
+}
+function viewSlice(r) {
+  if (needStore()) return;
+  const sl = SLICE[r.key], title = sl.title(r.val), { list, counts, status } = sliceList(r);
+  $("#top").innerHTML = `<div class="top-row">${backLink("profile", "Profile")}
+    <span class="count grow" style="padding-left:12px"><span class="label">${esc(title)}</span><span class="mute" style="font-variant-numeric:tabular-nums">${list.length}</span></span></div>`;
+  bindBack();
+  const several = counts && counts.filter((c) => c[2]).length > 1;
+  $("#main").innerHTML = `${r.key === "color" && FAMILY_HEX[r.val] ? `<div class="slice-band" style="background:${FAMILY_HEX[r.val]}"></div>` : ""}
+    ${several ? `<div class="slice-note chips">${counts.filter((c) => c[2]).map(([id, l, n]) => `<button class="chip" data-st="${id}" aria-pressed="${id === status}">${l}<span class="n">${n}</span></button>`).join("")}</div>` : ""}
+    <div id="grid"></div>`;
+  document.querySelectorAll("[data-st]").forEach((b) => b.onclick = () => { S.sliceStatus[r.key + ":" + r.val] = b.dataset.st; viewSlice(r); });
+  renderSliceGrid();
+}
+function renderSliceGrid() {
+  const r = route(), el = $("#grid"); if (!el || r.v !== "slice") return;
+  const { list } = sliceList(r);
+  if (!S.loaded) { el.innerHTML = emptyBox("Loading your wardrobe", "Fetching your pieces."); return; }
+  if (!list.length) { el.innerHTML = emptyBox("Nothing here yet", `Nothing in ${SLICE[r.key].title(r.val)} right now.`, `<a class="btn full" href="#wardrobe">Go to wardrobe</a>`); return; }
+  gridInto(el, list);
+}
+// Every brand in the wardrobe, each opening its own slice.
+function viewBrands() {
+  if (needStore()) return;
+  const owned = live().filter((g) => (g.status || "owned") === "owned"), m = new Map();
+  for (const g of owned) { const b = (g.brand || "").trim(); if (!b) continue; const k = b.toLowerCase(); const e = m.get(k) || [b, 0]; e[1]++; m.set(k, e); }
+  const rows = [...m.values()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])), max = Math.max(1, ...rows.map((x) => x[1]));
+  $("#top").innerHTML = `<div class="top-row">${backLink("profile", "Profile")}<span class="count grow" style="padding-left:12px"><span class="label">Brands</span><span class="mute" style="font-variant-numeric:tabular-nums">${rows.length}</span></span></div>`;
+  bindBack();
+  $("#main").innerHTML = rows.length ? `<ul class="bars">${rows.map(([b, n]) => `<li><a href="${sliceHref("brand", b)}"><span>${esc(b)}</span><span class="t"><i style="width:${(n / max) * 100}%"></i></span><span class="c">${n}</span></a></li>`).join("")}</ul>`
+    : emptyBox("No brands yet", "Add a brand to a piece and it shows up here.", `<a class="btn full" href="#wardrobe">Go to wardrobe</a>`);
+}
 
 function clearFilters() { S.sel = { category: [], brand: [], color: [], season: [], size: [], tag: [] }; S.favOnly = false; S.q = ""; render(); }
 
@@ -1322,11 +1450,13 @@ function viewItem({ id }) {
     $("#main").innerHTML = S.loaded ? emptyBox("Piece not found", "It may have been deleted. The round arrow at the top brings back your last action.", `<a class="btn full" href="#wardrobe">Back to wardrobe</a>`) : emptyBox("Loading", "Fetching this piece.");
     return;
   }
-  const order = filtered().list.map((x) => x.id); const ix = order.indexOf(id);
+  // Previous and next walk the grid this piece was opened from.
+  const gh = gridHash(), sl = parseSlice(gh);
+  const order = (sl ? sliceList(sl).list : filtered().list).map((x) => x.id); const ix = order.indexOf(id);
   const prev = ix > 0 ? order[ix - 1] : null, next = ix >= 0 && ix < order.length - 1 ? order[ix + 1] : null;
-  const step = (to, dir, label) => `<a class="tbtn ico" style="text-decoration:none;color:${to ? "var(--ink)" : "var(--line)"}" aria-label="${label}" ${to ? `href="#item-${to}"` : `aria-disabled="true"`}>${ICON[dir]}</a>`;
+  const step = (to, dir, label) => `<a class="tbtn ico" style="text-decoration:none;color:${to ? "var(--ink)" : "var(--line)"}" aria-label="${label}" ${to ? `href="#item-${to}" data-step` : `aria-disabled="true"`}>${ICON[dir]}</a>`;
   $("#top").innerHTML = `<div class="top-row">
-    <a class="back label" href="#wardrobe" style="text-decoration:none">Wardrobe</a>
+    ${backLink("wardrobe", "Wardrobe")}
     <span class="grow mute" style="padding:0 12px;font-size:12px;font-variant-numeric:tabular-nums">${ix >= 0 && order.length > 1 ? `${ix + 1} of ${order.length}` : ""}</span>
     ${step(prev, "prev", "Previous piece")}${step(next, "next", "Next piece")}</div>`;
 
@@ -1334,14 +1464,17 @@ function viewItem({ id }) {
   if (S.slide > imgs.length - 1) S.slide = Math.max(0, imgs.length - 1);
   const editing = !!S.edit;
   const spec = (k, v, raw) => (v ? `<div><dt>${k}</dt><dd class="cap1">${raw ? v : esc(v)}</dd></div>` : "");
+  // A value that opens every piece sharing it.
+  const to = (key, val, text) => `<a href="${sliceHref(key, val)}">${esc(text ?? val)}</a>`;
+  const tos = (key, vals) => (vals || []).length ? vals.map((v) => to(key, v)).join(", ") : null;
   const details = [
-    spec("Category", catLabel(g.category)), spec("Size", g.size),
-    spec("Colour", g.color ? `<span class="swatch" style="background:${esc(g.color)}"></span><span class="cap1" style="display:inline-block">${esc(g.colorFamily || "")}</span>` : null, true),
+    spec("Category", g.category ? to("category", g.category, catLabel(g.category)) : null, true), spec("Size", g.size),
+    spec("Colour", g.color ? `<span class="swatch" style="background:${esc(g.color)}"></span>${g.colorFamily ? `<a class="cap1" style="display:inline-block" href="${sliceHref("color", g.colorFamily)}">${esc(g.colorFamily)}</a>` : ""}` : null, true),
     spec("Material", g.material), spec("Collection", g.collection),
     spec("Price", g.price != null ? String(g.price) : null), spec("Bought", g.bought ? fmtDate(g.bought) : null),
   ].join("");
   const styling = [
-    spec("Season", listText(g.seasons)), spec("Style", listText(g.styles)), spec("Fit", g.fit), spec("Silhouette", g.silhouette),
+    spec("Season", tos("season", g.seasons), true), spec("Style", tos("style", g.styles), true), spec("Fit", g.fit), spec("Silhouette", g.silhouette),
     spec("Formality", g.formality ? FORMALITY[g.formality] : null), spec("Layer", g.layer), spec("Pattern", g.pattern),
   ].join("");
   const MISSING = [["fit", "fit"], ["silhouette", "silhouette"], ["styles", "style"], ["formality", "formality"], ["seasons", "season"]];
@@ -1363,7 +1496,7 @@ function viewItem({ id }) {
       <input type="file" id="file2" accept="image/*" multiple hidden>
     </section>
     <section>
-      <div class="head">${g.brand ? `<div class="label">${esc(g.brand)}</div>` : ""}<h1>${esc(g.name)}</h1>
+      <div class="head">${g.brand ? `<a class="label" style="display:inline-block" href="${sliceHref("brand", g.brand.trim())}">${esc(g.brand)}</a>` : ""}<h1>${esc(g.name)}</h1>
         <div class="meta"><span class="cap1" style="display:inline-block">${esc(g.status || "owned")}</span> · Added ${fmtDate(g.createdAt || Date.now())}</div></div>
       ${S.canWrite && !editing ? `<div class="acts">
         <button class="btn plain" id="fav" aria-pressed="${!!g.fav}"><span class="sq${g.fav ? " on" : ""}"></span>${g.fav ? "Favourite" : "Add to favourites"}</button>
@@ -1375,7 +1508,7 @@ function viewItem({ id }) {
       : `<div class="part"><h2>Details</h2><dl class="specs">${details}</dl></div>
         <div class="part"><h2>Styling</h2>${styling ? `<dl class="specs">${styling}</dl>` : `<p class="mute" style="margin:0">How it fits and when you wear it. Outfit ideas use this.</p>`}
           ${missing.length && S.canWrite ? `<button class="linkish" id="complete">${esc(missingText)}</button>` : ""}</div>
-        ${(g.tags || []).length ? `<div class="part"><h2>Tags</h2><div class="chips">${g.tags.map((t) => `<a class="chip" href="#wardrobe" data-tag="${esc(t)}">${esc(t)}</a>`).join("")}</div></div>` : ""}
+        ${(g.tags || []).length ? `<div class="part"><h2>Tags</h2><div class="chips">${g.tags.map((t) => `<a class="chip" href="${sliceHref("tag", t)}">${esc(t)}</a>`).join("")}</div></div>` : ""}
         ${g.notes ? `<div class="part"><h2>Notes</h2><p class="notes">${esc(g.notes)}</p></div>` : ""}
         ${S.canWrite ? `<div class="foot"><button id="dup">Duplicate</button><button class="danger" id="del">Delete piece</button></div>` : ""}
         ${S.confirmDel ? `<div class="confirm"><span>Delete this piece? It leaves your wardrobe, lists and outfit ideas. You can undo this.</span><div class="btns"><button class="btn danger" id="del-yes">Delete</button><button class="btn" id="del-no">Keep</button></div></div>` : ""}`}
@@ -1390,7 +1523,8 @@ function viewItem({ id }) {
     document.querySelectorAll("#strip [data-go]").forEach((b) => b.setAttribute("aria-current", String(+b.dataset.go === i)));
   };
   document.querySelectorAll("#strip [data-go]").forEach((b) => b.onclick = () => car.scrollTo({ left: car.clientWidth * +b.dataset.go, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }));
-  document.querySelectorAll("[data-tag]").forEach((a) => a.onclick = () => { S.sel = { category: [], brand: [], color: [], season: [], size: [], tag: [a.dataset.tag] }; S.status = g.status || "owned"; });
+  bindBack();
+  document.querySelectorAll("[data-step]").forEach((a) => a.onclick = (e) => { e.preventDefault(); swapTo(a.getAttribute("href").slice(1)); });
   if (!S.canWrite) return;
   refreshRemoved(id);
   $("#ph-menu")?.addEventListener("click", () => { S.sheet = "photo"; renderLayer(); });
@@ -1509,16 +1643,16 @@ function viewProfile() {
   $("#top").innerHTML = `<div class="top-row"><span class="word">RAIL</span><span class="label title grow">Profile</span><a class="tbtn ico" href="#settings" aria-label="Settings" title="Settings" style="color:var(--ink)">${ICON.cog}</a></div>`;
   const all = live(), owned = all.filter((g) => (g.status || "owned") === "owned");
   const brands = new Set(owned.map((g) => (g.brand || "").toLowerCase()).filter(Boolean));
-  const stats = [["Pieces", owned.length], ["Brands", brands.size], ["Favourites", owned.filter((g) => g.fav).length], ["Wishlist", all.filter((g) => g.status === "wishlist").length]];
-  const byCat = CATEGORIES.map(([id, l]) => [l, owned.filter((g) => g.category === id).length]).filter((x) => x[1]);
+  const stats = [["Pieces", owned.length, sliceHref("status", "owned")], ["Brands", brands.size, "#brands"], ["Favourites", owned.filter((g) => g.fav).length, sliceHref("fav", "1")], ["Wishlist", all.filter((g) => g.status === "wishlist").length, sliceHref("status", "wishlist")]];
+  const byCat = CATEGORIES.map(([id, l]) => [l, owned.filter((g) => g.category === id).length, id]).filter((x) => x[1]);
   const max = Math.max(1, ...byCat.map((x) => x[1]));
   const byCol = Object.entries(owned.reduce((m, g) => (g.colorFamily && (m[g.colorFamily] = (m[g.colorFamily] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]);
-  $("#main").innerHTML = `<div class="stats">${stats.map(([k, v]) => `<div><div class="label mute">${k}</div><div class="v">${v}</div></div>`).join("")}</div>
+  $("#main").innerHTML = `<div class="stats">${stats.map(([k, v, href]) => v ? `<a class="stat" href="${href}"><div class="label mute">${k}</div><div class="v">${v}</div></a>` : `<div><div class="label mute">${k}</div><div class="v">${v}</div></div>`).join("")}</div>
     <div class="label mute gut" style="padding-block:14px;border-bottom:1px solid var(--line)">By category</div>
-    ${byCat.length ? `<ul class="bars">${byCat.map(([k, n]) => `<li><span>${esc(k)}</span><span class="t"><i style="width:${(n / max) * 100}%"></i></span><span class="c">${n}</span></li>`).join("")}</ul>` : `<p class="mute gut" style="padding-block:14px;margin:0">Add pieces to see how your wardrobe is spread.</p>`}
+    ${byCat.length ? `<ul class="bars">${byCat.map(([k, n, id]) => `<li><a href="${sliceHref("category", id)}"><span>${esc(k)}</span><span class="t"><i style="width:${(n / max) * 100}%"></i></span><span class="c">${n}</span></a></li>`).join("")}</ul>` : `<p class="mute gut" style="padding-block:14px;margin:0">Add pieces to see how your wardrobe is spread.</p>`}
     ${byCol.length ? `<div class="label mute gut" style="padding-block:14px;border-bottom:1px solid var(--line)">Palette</div>
-    <div style="display:flex;height:28px;border-bottom:1px solid var(--line)">${byCol.map(([c, n]) => `<span title="${esc(c)} ${n}" style="flex:${n};background:${FAMILY_HEX[c]}"></span>`).join("")}</div>
-    <div class="gut chips" style="padding-block:12px">${byCol.map(([c, n]) => `<span class="chip"><span class="sw" style="background:${FAMILY_HEX[c]}"></span><span class="cap1">${c}</span><span class="n">${n}</span></span>`).join("")}</div>` : ""}
+    <div class="palette" style="display:flex;height:28px;border-bottom:1px solid var(--line)">${byCol.map(([c, n]) => `<a class="seg" href="${sliceHref("color", c)}" aria-label="${esc(cap1(c))}, ${n}" title="${esc(c)} ${n}" style="flex:${n};background:${FAMILY_HEX[c]}"></a>`).join("")}</div>
+    <div class="gut chips" style="padding-block:12px">${byCol.map(([c, n]) => `<a class="chip" href="${sliceHref("color", c)}"><span class="sw" style="background:${FAMILY_HEX[c]}"></span><span class="cap1">${c}</span><span class="n">${n}</span></a>`).join("")}</div>` : ""}
     <div class="version gut"><span><span class="label mute">App version</span><br>${APP_VERSION}</span>
       <button class="btn${S.updateReady ? " solid" : ""}" id="check">${S.updateReady ? "Update now" : "Check for updates"}</button></div>
     ${installRow()}
